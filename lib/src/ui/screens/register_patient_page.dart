@@ -75,7 +75,7 @@ class _RegisterPatientPageState extends State<RegisterPatientPage> {
     final q = _searchCtrl.text;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
@@ -86,7 +86,7 @@ class _RegisterPatientPageState extends State<RegisterPatientPage> {
         ),
         centerTitle: true,
         title: const Text(
-          'Regístrate',
+          'Registrar nuevo paciente',
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w700,
@@ -102,16 +102,8 @@ class _RegisterPatientPageState extends State<RegisterPatientPage> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  const SizedBox(height: 12),
-
-                  const Text(
-                    'Registrar nuevo paciente',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: kInk,
-                    ),
-                  ),
+                  
+                  
 
                   const SizedBox(height: 18),
 

@@ -5,16 +5,18 @@ import 'package:flutter/material.dart';
 /// PALETA DE COLORES PRINCIPAL - WHO AM I?
 /// ===========================================================
 /// Los colores se centralizan aquí para mantener coherencia visual
-/// en toda la aplicación. Cualquier cambio de tono o identidad
-/// visual puede hacerse en un solo punto.
+/// en toda la aplicación.
 
 // Colores base
 const kPurple = Color(0xFFD6A7F4); // Morado principal
 const kBlue   = Color(0xFF9ED3FF); // Azul del mockup
 const kInk    = Color(0xFF111111); // Texto principal
-const kGrey1  = Color(0xFF6B7280); // Texto secundario / placeholders
+const kGrey1  = Color(0xFF6B7280); // Texto secundario
 
-// Verde pastel (para secciones de juegos y acentos suaves)
+// 💛 Amarillo pastel para fondos del chat y pantallas cálidas
+const kYellow = Color(0xFFFFF7CC);
+
+// Verde pastel para juegos y acentos
 const kGreenPastel = Color(0xFFB6E2B6);
 
 // Campos y bordes
@@ -28,7 +30,7 @@ final appTheme = ThemeData(
   useMaterial3: true,
   scaffoldBackgroundColor: Colors.white,
 
-  // --- Estilo de barra superior ---
+  // --- AppBar ---
   appBarTheme: const AppBarTheme(
     backgroundColor: Colors.white,
     foregroundColor: kInk,
@@ -41,7 +43,7 @@ final appTheme = ThemeData(
     ),
   ),
 
-  // --- Tipografías globales ---
+  // --- Tipografía ---
   textTheme: const TextTheme(
     headlineLarge:
         TextStyle(fontSize: 36, fontWeight: FontWeight.w800, color: kInk),
@@ -52,7 +54,7 @@ final appTheme = ThemeData(
         TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: kInk),
   ),
 
-  // --- Campos de texto ---
+  // --- Inputs ---
   inputDecorationTheme: InputDecorationTheme(
     isDense: true,
     filled: true,
@@ -71,13 +73,13 @@ final appTheme = ThemeData(
     ),
   ),
 
-  // --- Botones rellenos (FilledButton) ---
+  // --- FilledButton ---
   filledButtonTheme: FilledButtonThemeData(
     style: FilledButton.styleFrom(
       minimumSize: const Size.fromHeight(56),
       shape: const StadiumBorder(),
       elevation: 0,
-      foregroundColor: kInk, // texto negro
+      foregroundColor: kInk,
       textStyle: const TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w700,
@@ -85,23 +87,21 @@ final appTheme = ThemeData(
     ),
   ),
 
-  // --- Íconos ---
+  // Íconos
   iconTheme: const IconThemeData(color: kInk),
 );
 
 /// ===========================================================
-/// HELPERS DE BOTONES (para consistencia de estilo)
+/// HELPERS DE BOTONES
 /// ===========================================================
-/// Se usan para mantener la identidad de color en botones tipo pastilla
 ButtonStyle pillBlue() => FilledButton.styleFrom(backgroundColor: kBlue);
 ButtonStyle pillLav()  => FilledButton.styleFrom(backgroundColor: kPurple);
 ButtonStyle pillGreen() => FilledButton.styleFrom(backgroundColor: kGreenPastel);
 ButtonStyle pill(Color c) => FilledButton.styleFrom(backgroundColor: c);
 
 /// ===========================================================
-/// ESTILOS DE TEXTO ESPECÍFICOS
+/// ESTILOS ESPECÍFICOS
 /// ===========================================================
-/// Usado en la pantalla de bienvenida o elementos introductorios.
 const welcomeKicker = TextStyle(
   letterSpacing: 1.5,
   color: kGrey1,

@@ -747,15 +747,24 @@ class _MemoramaPageState extends State<MemoramaPage>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  ElevatedButton(
+                  ElevatedButton.icon(
                     onPressed: _resetGame,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: kPurple,
                       foregroundColor: kInk,
                       minimumSize: const Size(140, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                      elevation: 3,
                     ),
-                    child: const Text('Reiniciar'),
+                    icon: const Icon(Icons.refresh, color: Colors.black), // ← ÍCONO agregado
+                    label: const Text(
+                      'Reiniciar',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
                   ),
+
                   ElevatedButton.icon(
                     onPressed: _pauseGame,
                     icon: const Icon(Icons.pause),

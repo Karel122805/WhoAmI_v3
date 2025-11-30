@@ -1,24 +1,21 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ====== PERMISOS (fuera de <application>) ====== -->
+    <!-- ====== 🔐 PERMISOS GLOBALES ====== -->
 
-    <!-- Red / Firebase -->
+    <!-- 🌐 Internet / Firebase -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Cámara -->
+    <!-- 📷 Cámara -->
     <uses-permission android:name="android.permission.CAMERA" />
 
-    <!-- Notificaciones (Android 13+) -->
+    <!-- 🔔 Notificaciones -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Permite reprogramar notificaciones al reiniciar el teléfono -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
-    <!-- 🔔 Permite programar alarmas exactas (Android 12+) -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
-    <!-- Lectura de fotos/galería -->
+    <!-- 🖼️ Lectura de fotos / galería -->
     <uses-permission
         android:name="android.permission.READ_MEDIA_IMAGES"
         tools:targetApi="33" />
@@ -26,16 +23,27 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
-    <!-- Declara la cámara como NO requerida (para que la app pueda instalarse sin cámara) -->
+    <!-- 📍 Ubicación -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- 🔊 Vibración y audio (TTS) -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- 📷 Declarar cámara como no obligatoria -->
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />
 
-    <!-- ====== APLICACIÓN ====== -->
+    <!-- ====== 🧠 CONFIGURACIÓN DE LA APP ====== -->
     <application
         android:name="${applicationName}"
         android:label="Who Am I?"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"
@@ -58,7 +66,7 @@
             </intent-filter>
         </activity>
 
-        <!-- FileProvider para URIs seguras (cámara/compartir archivos) -->
+        <!-- 📁 FileProvider (para cámara / compartir archivos) -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -89,11 +97,15 @@
             android:value="2" />
     </application>
 
-    <!-- (Opcional) Consultas que usa el engine para procesar texto -->
+    <!-- ====== 🔍 Consultas usadas por plugins ====== -->
     <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />
         </intent>
     </queries>
+
 </manifest>

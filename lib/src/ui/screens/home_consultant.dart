@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
 
 // Estilos y componentes
 import '../theme.dart';
@@ -10,22 +11,22 @@ import '../user_avatar.dart';
 // Vistas
 import 'tips_page.dart';
 import 'calendar_page.dart';
-import 'game_page.dart' as games; // evitar choques de nombres
+import 'game_page.dart' as games;
 import 'motivational_phrases_page.dart';
 import 'notifications_page.dart';
+import 'assistant_page.dart';
+
 
 // Servicios
 import 'package:whoami_app/services/memories_scheduler.dart';
 import 'package:whoami_app/services/notifications_service.dart';
 
 /// =============================================================
-/// HomeConsultantPage
-/// Pantalla principal del rol "Consultante".
+/// HomeConsultantPage (Consultante) — FINAL con emergencias agrupadas
 /// =============================================================
 class HomeConsultantPage extends StatefulWidget {
   const HomeConsultantPage({super.key, this.displayName});
   static const route = '/home/consultant';
-
   final String? displayName;
 
   @override
@@ -35,6 +36,7 @@ class HomeConsultantPage extends StatefulWidget {
 class _HomeConsultantPageState extends State<HomeConsultantPage> {
   int _notifCount = 0;
   bool _loadingNotif = true;
+  bool _hasCaregiver = false;
 
   @override
   void initState() {
@@ -42,18 +44,41 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
     _initializeHome();
   }
 
+  /// =============================================================
+  /// Inicialización de servicios
+  /// =============================================================
   Future<void> _initializeHome() async {
     await NotificationsService.ensureInitialized();
 
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
-      // Programa recordatorios y luego actualiza el badge.
       await MemoriesScheduler.scheduleAllForUser(uid);
+      await _checkCaregiver(uid);
     }
 
     await _loadNotifCount();
   }
 
+  /// ✅ Verifica si el usuario tiene un cuidador vinculado
+  Future<void> _checkCaregiver(String uid) async {
+    try {
+      final doc =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final data = doc.data();
+      if (data != null &&
+          data['caregiverId'] != null &&
+          data['caregiverId'] != '') {
+        setState(() => _hasCaregiver = true);
+      } else {
+        setState(() => _hasCaregiver = false);
+      }
+    } catch (e) {
+      debugPrint('Error comprobando cuidador: $e');
+      setState(() => _hasCaregiver = false);
+    }
+  }
+
+  /// ✅ Obtiene cantidad de notificaciones pendientes (locales)
   Future<void> _loadNotifCount() async {
     try {
       final count = await NotificationsService.getPendingCount();
@@ -69,11 +94,145 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
     }
   }
 
+  /// ✅ Abre la página de notificaciones
   Future<void> _openNotifications() async {
     await Navigator.pushNamed(context, NotificationsPage.route);
     await _loadNotifCount();
   }
 
+  /// =============================================================
+  /// 🚨 FUNCIÓN DE EMERGENCIA — sincronizada con cuidador
+  /// =============================================================
+  Future<void> _sendEmergencyAlert() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final data = userDoc.data() ?? {};
+      final caregiverId = data['caregiverId'];
+
+      if (caregiverId == null || caregiverId.isEmpty) {
+        setState(() => _hasCaregiver = false);
+        return;
+      }
+
+      // 📍 Solicitar permisos y obtener ubicación
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) {
+          throw Exception('Permiso de ubicación denegado.');
+        }
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      final name =
+          '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'.trim().isEmpty
+              ? 'Tu consultante'
+              : '${data['firstName']} ${data['lastName']}';
+
+      // ✅ Guardar en la colección GLOBAL 'emergencies'
+      final emergencyRef =
+          FirebaseFirestore.instance.collection('emergencies').doc();
+
+      await emergencyRef.set({
+        'consultantId': user.uid,
+        'caregiverId': caregiverId,
+        'consultantName': name,
+        'lat': pos.latitude,
+        'lng': pos.longitude,
+        'title': '🚨 Emergencia detectada',
+        'body': '$name necesita ayuda.',
+        'timestamp': FieldValue.serverTimestamp(),
+        'active': true,
+      });
+
+      // 🟣 Forzar actualización
+      await emergencyRef.update({'triggeredAt': FieldValue.serverTimestamp()});
+
+      // 💬 Notificación interna para el cuidador
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(caregiverId)
+          .collection('notifications')
+          .add({
+        'title': '🚨 Emergencia detectada',
+        'body': '$name necesita ayuda.',
+        'type': 'emergency',
+        'consultantId': user.uid,
+        'lat': pos.latitude,
+        'lng': pos.longitude,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      // 🟢 Mostrar notificación local agrupada
+      await NotificationsService.showEmergencyAlert(
+        title: '🚨 Emergencia detectada',
+        body: '$name necesita ayuda.',
+      );
+
+      // ✅ Confirmación visual
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFFFFEAEA),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            '⚠️ Notificación enviada',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
+          ),
+          content: const Text(
+            'Tu cuidador ha sido notificado con tu ubicación en tiempo real.\n\n'
+            'Mantén la calma, la ayuda está en camino.',
+            style: TextStyle(color: Colors.black87),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.redAccent.withOpacity(0.1),
+                foregroundColor: Colors.black,
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error al enviar emergencia: $e');
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Error'),
+          content: Text('Ocurrió un error al enviar la alerta:\n$e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  /// =============================================================
+  /// UI
+  /// =============================================================
   @override
   Widget build(BuildContext context) {
     return MediaQuery(
@@ -89,7 +248,7 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Barra superior con Ajustes y Notificaciones
+                      // Barra superior
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Row(
@@ -99,11 +258,11 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                               onPressed: () {
                                 Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (_) => const SettingsPage()),
+                                  MaterialPageRoute(
+                                      builder: (_) => const SettingsPage()),
                                 );
                               },
                               icon: const Icon(Icons.settings, color: kInk, size: 28),
-                              tooltip: 'Ajustes',
                             ),
                             _NotificationBell(
                               count: _notifCount,
@@ -114,11 +273,10 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                         ),
                       ),
 
-                      // Avatar del usuario
                       const UserAvatar(radius: 60),
                       const SizedBox(height: 12),
 
-                      // Nombre dinámico desde Auth/Firestore
+                      // Nombre
                       StreamBuilder<User?>(
                         stream: FirebaseAuth.instance.userChanges(),
                         builder: (context, authSnap) {
@@ -126,31 +284,25 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                           if (user == null) return const SizedBox();
                           final uid = user.uid;
 
-                          return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                            stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+                          return StreamBuilder<
+                              DocumentSnapshot<Map<String, dynamic>>>(
+                            stream: FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(uid)
+                                .snapshots(),
                             builder: (context, docSnap) {
                               String name = 'Usuario';
-
                               if (docSnap.hasData && docSnap.data!.data() != null) {
                                 final data = docSnap.data!.data()!;
-                                final first = (data['firstName'] as String?)?.trim() ?? '';
-                                final last = (data['lastName'] as String?)?.trim() ?? '';
-                                final fsName = [first, last].where((e) => e.isNotEmpty).join(' ');
+                                final first =
+                                    (data['firstName'] as String?)?.trim() ?? '';
+                                final last =
+                                    (data['lastName'] as String?)?.trim() ?? '';
+                                final fsName = [first, last]
+                                    .where((e) => e.isNotEmpty)
+                                    .join(' ');
                                 if (fsName.isNotEmpty) name = fsName;
                               }
-
-                              if (name == 'Usuario') {
-                                final dn = (user.displayName ?? '').trim();
-                                if (dn.isNotEmpty) name = dn;
-                              }
-
-                              if (name == 'Usuario') {
-                                final mail = user.email ?? '';
-                                if (mail.contains('@')) name = mail.split('@').first;
-                              }
-
-                              name = name.isNotEmpty ? name : (widget.displayName ?? 'Usuario');
-
                               return Text(
                                 'Bienvenido $name',
                                 textAlign: TextAlign.center,
@@ -166,7 +318,8 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                       ),
 
                       const SizedBox(height: 8),
-                      const Text('Selecciona una opción', style: TextStyle(color: kGrey1)),
+                      const Text('Selecciona una opción',
+                          style: TextStyle(color: kGrey1)),
                       const SizedBox(height: 20),
 
                       // Botones principales
@@ -174,33 +327,29 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                         color: kBlue,
                         icon: Icons.menu_book_outlined,
                         text: 'Consejos',
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const TipsPage()));
-                        },
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const TipsPage()),
+                        ),
                       ),
                       _PillButton(
                         color: kBlue,
                         icon: Icons.auto_stories_outlined,
-                        text: 'Frases motivadoras',
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const MotivationalPhrasesPage()));
-                        },
+                        text: 'Frases',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const MotivationalPhrasesPage()),
+                        ),
                       ),
                       _PillButton(
                         color: kBlue,
                         icon: Icons.event_note_outlined,
-                        text: 'Calendario de recuerdos',
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const CalendarPage()));
-                        },
-                      ),
-                      _PillButton(
-                        color: kBlue,
-                        icon: Icons.chat_bubble_outline,
-                        text: 'ChatWhoAmI',
-                        onTap: () {
-                          // Implementar chat IA en el futuro
-                        },
+                        text: 'Recuerdos',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const CalendarPage()),
+                        ),
                       ),
                       _PillButton(
                         color: kBlue,
@@ -210,13 +359,33 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                           Navigator.push(context, MaterialPageRoute(builder: (_) => const games.GamesPage()));
                         },
                       ),
+                    _PillButton(
+                      color: kBlue,
+                      icon: Icons.chat_bubble_outline,
+                      text: 'Asistente',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const AssistantPage()),
+                      ),
+                    ),
+
 
                       const SizedBox(height: 8),
-                      _PillButton(
-                        color: const Color(0xFFFF9AA0),
-                        icon: Icons.warning_amber_rounded,
-                        text: 'Emergencia',
-                        onTap: () => _showComingSoonDialog(context),
+
+                      /// 🚨 BOTÓN DE EMERGENCIA
+                      Opacity(
+                        opacity: _hasCaregiver ? 1 : 0.5,
+                        child: AbsorbPointer(
+                          absorbing: !_hasCaregiver,
+                          child: _PillButton(
+                            color: const Color(0xFFFF9AA0),
+                            icon: Icons.warning_amber_rounded,
+                            text: _hasCaregiver
+                                ? 'Emergencia'
+                                : 'Emergencia (sin cuidador)',
+                            onTap: _sendEmergencyAlert,
+                          ),
+                        ),
                       ),
 
                       const SizedBox(height: 24),
@@ -232,9 +401,6 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
   }
 }
 
-/// =============================================================
-/// Campanita de notificaciones con badge o cargando
-/// =============================================================
 class _NotificationBell extends StatelessWidget {
   const _NotificationBell({
     required this.count,
@@ -256,14 +422,18 @@ class _NotificationBell extends StatelessWidget {
       children: [
         IconButton(
           onPressed: loading ? null : onTap,
-          icon: const Icon(Icons.notifications_none_rounded, color: kInk, size: 28),
-          tooltip: 'Notificaciones',
+          icon: const Icon(Icons.notifications_none_rounded,
+              color: kInk, size: 28),
         ),
         if (loading)
           const Positioned(
             right: 10,
             top: 10,
-            child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+            child: SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
           ),
         if (!loading && showBadge)
           Positioned(
@@ -275,7 +445,6 @@ class _NotificationBell extends StatelessWidget {
                 color: Colors.red,
                 borderRadius: BorderRadius.circular(12),
               ),
-              constraints: const BoxConstraints(minWidth: 20, minHeight: 18),
               alignment: Alignment.center,
               child: Text(
                 display,
@@ -292,9 +461,6 @@ class _NotificationBell extends StatelessWidget {
   }
 }
 
-/// =============================================================
-/// Botón con forma de pastilla reutilizable
-/// =============================================================
 class _PillButton extends StatelessWidget {
   const _PillButton({
     required this.color,
@@ -331,10 +497,7 @@ class _PillButton extends StatelessWidget {
               Text(
                 text,
                 style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: kInk,
-                ),
+                    fontSize: 16, fontWeight: FontWeight.w700, color: kInk),
               ),
             ],
           ),
@@ -342,25 +505,4 @@ class _PillButton extends StatelessWidget {
       ),
     );
   }
-}
-
-/// =============================================================
-/// Diálogo simple para la opción "Emergencia"
-/// =============================================================
-void _showComingSoonDialog(BuildContext context) {
-  showDialog<void>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('Emergencia'),
-      content: const Text(
-        'Muy pronto este botón avisará al cuidador con una notificación.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text('Entendido'),
-        ),
-      ],
-    ),
-  );
 }

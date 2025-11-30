@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'game_page.dart'; // Asume que esta es la ruta a tu menú de juegos
+import 'game_page.dart';
 
 class BrainSaysPage extends StatefulWidget {
   const BrainSaysPage({super.key});
@@ -20,21 +20,78 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
   int round = 1;
   int score = 0;
   int highlightedIndex = -1;
+  bool paused = false;
 
-  // --- Colores definidos para el Modal de Fin de Juego (manteniendo el estilo mejorado) ---
-  final Color primaryPurple =
-      Color(0xFFD6A7F4); // Morado oscuro (para texto del modal)
-  final Color modalButtonColor =
-      Color(0xFFD6A7F4); // Lila/Morado claro (para botón principal del modal)
-  final Color starColor = const Color(0xFFFFCC00); // Dorado para las estrellas
-
-  // --- Los colores de la cuadrícula se revertirán a los colores por defecto (gris, azul, morado) ---
+  final Color kPurple = const Color(0xFFD6A7F4);
+  final Color kBlue = const Color(0xFF9ED3FF);
+  final Color kRed = const Color(0xFFFFB3B3);
+  final Color kText = const Color(0xFF111111);
 
   @override
-  void initState() {
-    super.initState();
-    _startGame();
-  }
+void initState() {
+  super.initState();
+  // Mostrar la ventana emergente antes de iniciar el juego
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _showStartDialog();
+  });
+}
+
+Future<void> _showStartDialog() async {
+  await showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: Colors.white,
+      title: const Text(
+        '¿Listo para comenzar?',
+        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
+        textAlign: TextAlign.center,
+      ),
+      content: const Text(
+        'Prepárate para poner a prueba tu memoria.',
+        style: TextStyle(color: Colors.black87, fontSize: 15),
+        textAlign: TextAlign.center,
+      ),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        TextButton(
+          style: TextButton.styleFrom(
+            backgroundColor: const Color(0xFFFFB3B3), // Rojo suave
+            foregroundColor: Colors.black,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+          ),
+          onPressed: () {
+            Navigator.pop(context);
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const GamesPage()),
+            );
+          },
+          child: const Text('Salir al menú', style: TextStyle(fontSize: 14)),
+        ),
+        TextButton(
+          style: TextButton.styleFrom(
+            backgroundColor: const Color(0xFF9ED3FF), // Azul suave
+            foregroundColor: Colors.black,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+          ),
+          onPressed: () {
+            Navigator.pop(context);
+            _startGame();
+          },
+          child: const Text('Iniciar juego', style: TextStyle(fontSize: 14)),
+        ),
+      ],
+    ),
+  );
+}
 
   void _startGame() {
     pattern.clear();
@@ -43,6 +100,7 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
     round = 1;
     score = 0;
     showingPattern = true;
+    paused = false;
     _generatePattern();
     _showPattern();
   }
@@ -58,12 +116,10 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
     setState(() {});
 
     for (int index in pattern) {
-      if (!mounted) return;
+      if (!mounted || paused) return;
       setState(() => highlightedIndex = index);
-      // Tiempo para que el usuario observe el patrón
       await Future.delayed(const Duration(milliseconds: 600));
       setState(() => highlightedIndex = -1);
-      // Pequeña pausa entre iluminaciones
       await Future.delayed(const Duration(milliseconds: 300));
     }
 
@@ -74,7 +130,7 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
   }
 
   void onTileTap(int index) async {
-    if (!userTurn) return;
+    if (!userTurn || paused) return;
 
     setState(() => highlightedIndex = index);
     await Future.delayed(const Duration(milliseconds: 200));
@@ -82,19 +138,16 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
 
     userInput.add(index);
 
-    // 1. Verificar si el toque es incorrecto
     if (userInput.last != pattern[userInput.length - 1]) {
       _showGameOver();
       return;
     }
 
-    // 2. Verificar si el patrón fue completado
     if (userInput.length == pattern.length) {
       score++;
       userTurn = false;
       await Future.delayed(const Duration(milliseconds: 500));
 
-      // Aumentar el tamaño de la cuadrícula cada 3 rondas
       if (round % 3 == 0 && gridSize < 9) {
         gridSize++;
       }
@@ -105,7 +158,6 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
     }
   }
 
-  // --- Lógica para calcular las estrellas basada en el nivel alcanzado ---
   double _calculateStars(int level) {
     if (level <= 1) return 0.5;
     if (level <= 3) return 1.0;
@@ -115,7 +167,6 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
     return 3.0;
   }
 
-  // --- Función principal para mostrar el modal de fin de partida (Game Over) ---
   void _showGameOver() {
     final int levelReached = round - 1;
     final double starRating = _calculateStars(levelReached);
@@ -128,62 +179,151 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
           levelReached: levelReached,
           starRating: starRating,
           onRestart: () {
-            Navigator.pop(context); // Cierra el modal
-            _startGame(); // Reinicia el juego
+            Navigator.pop(context);
+            _startGame();
           },
           onMenu: () {
-            Navigator.pop(context); // Cierra el modal
+            Navigator.pop(context);
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (_) => const GamesPage()),
             );
           },
-          primaryPurple: primaryPurple,
-          modalButtonColor: modalButtonColor,
-          starColor: starColor,
+          modalButtonColor: kPurple,
         );
       },
     );
   }
 
-  // --- Diálogo de confirmación para salir ---
-  Future<bool> _onWillPop() async {
-    bool salir = false;
+  Future<bool> _showConfirmDialog({
+    required String title,
+    required String content,
+    required String noText,
+    required String yesText,
+  }) async {
+    bool result = false;
     await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('¿Estás seguro que quieres salir?'),
-        content: const Text('Perderás tu partida actual.'),
+        backgroundColor: Colors.white,
+        title: Text(title,
+            style: TextStyle(
+                fontWeight: FontWeight.bold, color: kText, fontSize: 18)),
+        content: Text(content,
+            style: TextStyle(color: kText, fontSize: 15),
+            textAlign: TextAlign.center),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: const Text('No, continuar jugando'),
+            style: TextButton.styleFrom(
+              backgroundColor: kBlue,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            onPressed: () => Navigator.pop(context),
+            child: Text(noText, style: const TextStyle(fontSize: 14)),
           ),
           TextButton(
+            style: TextButton.styleFrom(
+              backgroundColor: kRed,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
             onPressed: () {
-              salir = true;
+              result = true;
               Navigator.pop(context);
             },
-            child: const Text('Sí, salir'),
+            child: Text(yesText, style: const TextStyle(fontSize: 14)),
           ),
         ],
       ),
     );
-    return salir;
+    return result;
   }
 
-  // --- Método Build (donde se aplica la lógica de colores de los cuadros) ---
+  Future<bool> _onWillPop() async {
+    return await _showConfirmDialog(
+      title: '¿Estás seguro que quieres salir?',
+      content: 'Perderás tu partida actual.',
+      noText: 'No, continuar jugando',
+      yesText: 'Sí, salir',
+    );
+  }
+
+  Future<void> _onRestart() async {
+    final confirm = await _showConfirmDialog(
+      title: '¿Reiniciar partida?',
+      content: 'Se perderá tu progreso actual.',
+      noText: 'No, continuar',
+      yesText: 'Sí, reiniciar',
+    );
+    if (confirm) _startGame();
+  }
+
+  Future<void> _onPause() async {
+    paused = true;
+    final restart = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: Colors.white,
+        title: Text('Juego en pausa',
+            style: TextStyle(
+                fontWeight: FontWeight.bold, color: kText, fontSize: 18)),
+        content: Text('¿Qué deseas hacer?',
+            style: TextStyle(color: kText, fontSize: 15),
+            textAlign: TextAlign.center),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            style: TextButton.styleFrom(
+              backgroundColor: kBlue,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Continuar', style: TextStyle(fontSize: 14)),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              backgroundColor: kRed,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Reiniciar', style: TextStyle(fontSize: 14)),
+          ),
+        ],
+      ),
+    );
+    paused = false;
+    if (restart == true) _startGame();
+  }
+
   @override
   Widget build(BuildContext context) {
     final tileCount = gridSize;
     final size = MediaQuery.of(context).size;
     final gridSide = sqrt(tileCount).ceil();
-    // Cálculo del tamaño para asegurar que la cuadrícula se vea bien en el espacio disponible
-    final tileSize = (size.width - (12 * (gridSide + 1))) / gridSide;
 
     return WillPopScope(
       onWillPop: () async {
@@ -198,10 +338,8 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text(
-            'Brain Says',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
+          title: const Text('Brain Says',
+              style: TextStyle(fontWeight: FontWeight.bold)),
           backgroundColor: Colors.white,
           foregroundColor: Colors.black,
           elevation: 0,
@@ -229,21 +367,14 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
                       : userTurn
                           ? 'Repite el patrón'
                           : 'Esperando...',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    color: Colors.black87,
-                  ),
+                  style:
+                      const TextStyle(fontSize: 20, color: Colors.black87),
                 ),
                 const SizedBox(height: 15),
-
-                // --- Nivel y puntuación encima del tablero ---
-                Text(
-                  'Nivel: $round  |  Puntuación: $score',
-                  style: const TextStyle(fontSize: 18, color: Colors.black54),
-                ),
+                Text('Nivel: $round  |  Puntuación: $score',
+                    style: const TextStyle(
+                        fontSize: 18, color: Colors.black54)),
                 const SizedBox(height: 20),
-
-                // --- Cuadrícula del juego ---
                 Container(
                   padding: const EdgeInsets.all(12),
                   constraints: BoxConstraints(maxWidth: size.width),
@@ -251,7 +382,8 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: tileCount,
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    gridDelegate:
+                        SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: gridSide,
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
@@ -264,28 +396,25 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           decoration: BoxDecoration(
-                            // --- REVERSIÓN DE COLORES AQUÍ (gris, azul, morado) ---
                             color: isActive
                                 ? showingPattern
-                                    ? Colors
-                                        .lightBlueAccent // Iluminación del patrón (azul claro)
-                                    : Colors.purpleAccent.withOpacity(
-                                        0.6) // Iluminación del toque de usuario (morado claro)
-                                : Colors.grey
-                                    .shade300, // Color de los bloques inactivos (gris claro)
-                            // --- FIN REVERSIÓN DE COLORES ---
+                                    ? Colors.lightBlueAccent
+                                    : Colors.purpleAccent.withOpacity(0.6)
+                                : Colors.grey.shade300,
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: isActive
                                 ? [
                                     BoxShadow(
-                                      color: Colors.black26.withOpacity(0.4),
+                                      color:
+                                          Colors.black26.withOpacity(0.4),
                                       blurRadius: 10,
                                       offset: const Offset(0, 4),
                                     )
                                   ]
                                 : [
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(0.1),
+                                      color:
+                                          Colors.black.withOpacity(0.1),
                                       blurRadius: 4,
                                       offset: const Offset(0, 2),
                                     )
@@ -295,6 +424,48 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
                       );
                     },
                   ),
+                ),
+                const SizedBox(height: 25),
+                // === BOTONES CON ICONOS NEGROS ===
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kPurple,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 28, vertical: 12),
+                        elevation: 3,
+                      ),
+                      onPressed: _onRestart,
+                      icon: const Icon(Icons.refresh, color: Colors.black),
+                      label: const Text('Reiniciar',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 15)),
+                    ),
+                    const SizedBox(width: 16),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kRed,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 28, vertical: 12),
+                        elevation: 3,
+                      ),
+                      onPressed: _onPause,
+                      icon: const Icon(Icons.pause, color: Colors.black),
+                      label: const Text('Pausa',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 15)),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 40),
               ],
@@ -306,16 +477,11 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
   }
 }
 
-// --- Widget para generar las estrellas ---
+// === MODAL DE FIN DE JUEGO ===
 class StarRatingWidget extends StatelessWidget {
   final double rating;
   final Color color;
-
-  const StarRatingWidget({
-    super.key,
-    required this.rating,
-    required this.color,
-  });
+  const StarRatingWidget({super.key, required this.rating, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -324,8 +490,6 @@ class StarRatingWidget extends StatelessWidget {
       children: List.generate(3, (index) {
         double diff = rating - index;
         IconData iconData;
-
-        // Lógica simplificada para mostrar estrellas completas, medias o vacías
         if (diff >= 0.75) {
           iconData = Icons.star;
         } else if (diff >= 0.25) {
@@ -333,26 +497,18 @@ class StarRatingWidget extends StatelessWidget {
         } else {
           iconData = Icons.star_border;
         }
-
-        return Icon(
-          iconData,
-          color: color,
-          size: 36.0,
-        );
+        return Icon(iconData, color: color, size: 36.0);
       }),
     );
   }
 }
 
-// --- Widget para el Modal de Fin de Juego (basado en la imagen) ---
 class GameEndModal extends StatelessWidget {
   final int levelReached;
   final double starRating;
   final VoidCallback onRestart;
   final VoidCallback onMenu;
-  final Color primaryPurple;
   final Color modalButtonColor;
-  final Color starColor;
 
   const GameEndModal({
     super.key,
@@ -360,9 +516,7 @@ class GameEndModal extends StatelessWidget {
     required this.starRating,
     required this.onRestart,
     required this.onMenu,
-    required this.primaryPurple,
     required this.modalButtonColor,
-    required this.starColor,
   });
 
   String getLevelName(int level) {
@@ -375,81 +529,53 @@ class GameEndModal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String levelName = getLevelName(levelReached);
-
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
       backgroundColor: Colors.white,
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
-          // Título del modal
-          Text(
-            'Partida Terminada',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
-            ),
-            textAlign: TextAlign.center,
-          ),
+          const Text('Partida Terminada',
+              style:
+                  TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-
-          // Descripción del nivel alcanzado
-          Text(
-            'Llegaste al nivel $levelReached ($levelName).',
-            style: const TextStyle(fontSize: 16, color: Colors.black87),
-            textAlign: TextAlign.center,
-          ),
+          Text('Llegaste al nivel $levelReached ($levelName).',
+              style: const TextStyle(fontSize: 16, color: Colors.black87),
+              textAlign: TextAlign.center),
           const SizedBox(height: 15),
-
-          // Estrellas de valoración
-          StarRatingWidget(rating: starRating, color: starColor),
+          StarRatingWidget(rating: starRating, color: Colors.amber),
           const SizedBox(height: 20),
-
-          // Pregunta de acción
-          Text(
-            '¿Quieres seguir jugando?',
-            style: const TextStyle(
-                fontSize: 16,
-                color: Colors.black87,
-                fontWeight: FontWeight.w600),
-            textAlign: TextAlign.center,
-          ),
+          const Text('¿Quieres seguir jugando?',
+              style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.black87,
+                  fontWeight: FontWeight.w600)),
           const SizedBox(height: 15),
-
-          // --- Botones de Acción ---
-
-          // Botón principal: Jugar de nuevo
           ElevatedButton(
             onPressed: onRestart,
             style: ElevatedButton.styleFrom(
               backgroundColor: modalButtonColor,
-              foregroundColor: const Color.fromARGB(255, 0, 0, 0),
+              foregroundColor: Colors.black,
               minimumSize: const Size(double.infinity, 45),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
               elevation: 4,
             ),
-            child: const Text(
-              'Sí, jugar de nuevo',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
+            child: const Text('Sí, jugar de nuevo',
+                style:
+                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(height: 10),
-
-          // Botón secundario: Regresar al menú (texto, sin fondo)
           TextButton(
             onPressed: onMenu,
-            child: Text(
-              'Salir al menú',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.black,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            child: const Text('Salir al menú',
+                style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold)),
           ),
         ],
       ),

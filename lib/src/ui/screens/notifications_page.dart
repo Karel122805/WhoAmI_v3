@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'emergency_map_page.dart';
 import '../../../services/notifications_service.dart';
 import '../theme.dart';
 
@@ -17,6 +19,7 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   List<PendingNotificationRequest> _pending = [];
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _emergencies = [];
   final Set<int> _selectedIds = {};
   bool _loading = false;
   bool _selectMode = false;
@@ -24,22 +27,68 @@ class _NotificationsPageState extends State<NotificationsPage> {
   @override
   void initState() {
     super.initState();
-    _loadPending();
+    _loadAll();
   }
 
-  Future<void> _loadPending() async {
+    // 🧹 Marca la emergencia como resuelta y borra sus notificaciones
+  Future<void> _resolveEmergency(String docId) async {
+    try {
+      // 1) Marcar en Firestore como inactiva
+      await FirebaseFirestore.instance
+          .collection('emergencies')
+          .doc(docId)
+          .update({'active': false});
+
+      // 2) Cancelar notificaciones locales relacionadas a emergencias
+      final pending = await NotificationsService.pendingNotificationRequests();
+      for (final n in pending) {
+        if (n.payload == 'emergency') {
+          await NotificationsService.cancel(n.id);
+        }
+      }
+
+      // 3) Recargar la pantalla
+      await _loadAll();
+    } catch (e) {
+      debugPrint('⚠️ Error al resolver emergencia: $e');
+    }
+  }
+
+
+  Future<void> _loadAll() async {
     setState(() {
       _loading = true;
       _selectedIds.clear();
       _selectMode = false;
     });
-    final list = await NotificationsService.pendingNotificationRequests();
-    if (!mounted) return;
-    list.sort((a, b) => a.id.compareTo(b.id));
-    setState(() {
-      _pending = list;
-      _loading = false;
-    });
+
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final list = await NotificationsService.pendingNotificationRequests();
+      list.sort((a, b) => a.id.compareTo(b.id));
+
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> emergenciesDocs = [];
+      if (uid != null) {
+        final q = await FirebaseFirestore.instance
+            .collection('emergencies')
+            .where('caregiverId', isEqualTo: uid)
+            .where('active', isEqualTo: true)
+            .orderBy('timestamp', descending: true)
+            .get();
+        emergenciesDocs = q.docs;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _pending = list;
+        _emergencies = emergenciesDocs;
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint('⚠️ Error cargando notificaciones: $e');
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 
   void _toggleSelectMode() {
@@ -59,250 +108,459 @@ class _NotificationsPageState extends State<NotificationsPage> {
     });
   }
 
-  Future<void> _deleteSelected() async {
+  void _selectAll() {
+    setState(() {
+      if (_selectedIds.length == _pending.length) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds
+          ..clear()
+          ..addAll(_pending.map((n) => n.id));
+      }
+    });
+  }
+
+  Future<void> _confirmDeleteSelected() async {
     if (_selectedIds.isEmpty) {
       _showOkDialog(context,
           title: 'Atención',
-          message: 'Debes seleccionar al menos una notificación para borrarla.');
+          message: 'Debes seleccionar al menos una notificación para eliminar.');
       return;
     }
 
-    final msg = _selectedIds.length == 1
-        ? '¿Está seguro de eliminar esta notificación? Esta acción no se puede deshacer.'
-        : '¿Está seguro de eliminar las ${_selectedIds.length} notificaciones seleccionadas? Esta acción no se puede deshacer.';
+    final count = _selectedIds.length;
+    final confirm = await _showDeleteDialog(
+      context,
+      message: count == 1
+          ? '¿Deseas eliminar esta notificación?'
+          : '¿Deseas eliminar las $count notificaciones seleccionadas?',
+    );
 
-    final ok = await _showConfirmDialog(context, message: msg);
-    if (!ok) return;
-
-    for (final id in _selectedIds) {
-      await NotificationsService.cancel(id);
+    if (confirm == true) {
+      for (final id in _selectedIds) {
+        await NotificationsService.cancel(id);
+      }
+      await _loadAll();
+      if (!mounted) return;
+      _showOkDialog(context,
+          title: 'Eliminadas',
+          message: count == 1
+              ? 'La notificación fue eliminada correctamente.'
+              : '$count notificaciones fueron eliminadas correctamente.');
     }
-    await _loadPending();
-    if (!mounted) return;
-
-    final doneMsg = _selectedIds.length == 1
-        ? 'Notificación eliminada exitosamente.'
-        : 'Notificaciones eliminadas exitosamente.';
-    _showOkDialog(context, title: 'Listo', message: doneMsg);
   }
 
-@override
-Widget build(BuildContext context) {
-  final total = _pending.length;
+  @override
+  Widget build(BuildContext context) {
+    final total = _pending.length + _emergencies.length;
 
-  return Scaffold(
-    backgroundColor: Colors.white,
-    appBar: AppBar(
+    return Scaffold(
       backgroundColor: Colors.white,
-      elevation: 0,
-      iconTheme: const IconThemeData(color: Colors.black),
-      centerTitle: true,
-      title: FittedBox(
-  fit: BoxFit.scaleDown,
-  child: Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      const Text(
-        'Notificaciones',
-        style: TextStyle(
-          color: Colors.black,
-          fontWeight: FontWeight.bold,
-          fontSize: 20,
-        ),
-      ),
-      if (_pending.isNotEmpty) ...[
-        const SizedBox(width: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: BoxDecoration(
-            color: kPurple.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(12),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.black),
+        centerTitle: true,
+        title: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Notificaciones',
+                style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                ),
+              ),
+              if (total > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: kPurple.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$total',
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
-          child: Text(
-            '${_pending.length}',
-            style: const TextStyle(
-              color: Colors.black,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: Colors.black),
+            tooltip: 'Actualizar',
+            onPressed: _loadAll,
+          ),
+          if (_selectMode) ...[
+            IconButton(
+              icon: const Icon(Icons.select_all_rounded,
+                  color: Color(0xFF7C4DFF)),
+              tooltip: 'Seleccionar todas',
+              onPressed: _selectAll,
             ),
+            IconButton(
+              icon: const Icon(Icons.delete_rounded, color: Colors.redAccent),
+              tooltip: 'Eliminar seleccionadas',
+              onPressed: _confirmDeleteSelected,
+            ),
+          ],
+          IconButton(
+            icon: Icon(
+              _selectMode ? Icons.close_rounded : Icons.check_box_rounded,
+              color: Colors.black,
+            ),
+            tooltip: _selectMode
+                ? 'Salir de selección'
+                : 'Seleccionar notificaciones',
+            onPressed: _toggleSelectMode,
           ),
-        ),
-      ],
-    ],
-  ),
-),
-
-    actions: [
-  // 🔄 Refrescar
-  IconButton(
-    icon: const Icon(Icons.refresh_rounded, color: Colors.black),
-    tooltip: 'Actualizar',
-    onPressed: _loadPending,
-  ),
-
-  // ✅ Alternar modo selección
-  IconButton(
-    icon: Icon(
-      _selectMode ? Icons.close_rounded : Icons.check_box_rounded,
-      color: Colors.black,
-    ),
-    tooltip:
-        _selectMode ? 'Salir de selección' : 'Seleccionar notificaciones',
-    onPressed: _toggleSelectMode,
-  ),
-
-  // ⋮ Menú contextual para opciones
-  PopupMenuButton<String>(
-    icon: const Icon(Icons.more_vert_rounded, color: Colors.black),
-    tooltip: 'Más opciones',
-    onSelected: (value) {
-      if (value == 'select_all') {
-        setState(() {
-          if (_selectedIds.length == _pending.length) {
-            _selectedIds.clear();
-          } else {
-            _selectedIds.addAll(_pending.map((n) => n.id));
-          }
-        });
-      } else if (value == 'delete') {
-        _deleteSelected();
-      }
-    },
-    itemBuilder: (context) => [
-      const PopupMenuItem(
-        value: 'select_all',
-        child: Row(
-          children: [
-            Icon(Icons.done_all_rounded, size: 20, color: Colors.black54),
-            SizedBox(width: 10),
-            Text('Seleccionar todo'),
-          ],
-        ),
+        ],
       ),
-      const PopupMenuItem(
-        value: 'delete',
-        child: Row(
-          children: [
-            Icon(Icons.delete_forever_rounded, size: 20, color: Colors.black54),
-            SizedBox(width: 10),
-            Text('Eliminar seleccionadas'),
-          ],
-        ),
-      ),
-    ],
-  ),
-],
-
-
-    ),
       body: RefreshIndicator(
-        onRefresh: _loadPending,
+        onRefresh: _loadAll,
         child: _loading
             ? const Center(child: CircularProgressIndicator())
-            : _pending.isEmpty
+            : total == 0
                 ? const _EmptyState()
-                : ListView.builder(
+                : ListView(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _pending.length,
-                    itemBuilder: (context, i) {
-                      final n = _pending[i];
-                      final selected = _selectedIds.contains(n.id);
-                      final title = (n.title?.isNotEmpty ?? false)
-                          ? n.title!
-                          : 'Recordatorio de recuerdo';
-                      final body = (n.body?.isNotEmpty ?? false)
-                          ? n.body!
-                          : 'Sin descripción';
-
-                      return GestureDetector(
-                        onTap: _selectMode
-                            ? () => _toggleSelect(n.id)
-                            : null,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          curve: Curves.easeOut,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: selected
-                                  ? kPurple.withOpacity(0.9)
-                                  : kPurple.withOpacity(0.4),
-                              width: selected ? 2.5 : 1.2,
-                            ),
-                            color: selected
-                                ? kPurple.withOpacity(0.1)
-                                : Colors.white,
-                            boxShadow: [
-                              if (selected)
-                                BoxShadow(
-                                  color: kPurple.withOpacity(0.15),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                )
-                            ],
-                          ),
-                          margin: const EdgeInsets.only(bottom: 14),
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  if (_selectMode)
-                                    Checkbox(
-                                      value: selected,
-                                      activeColor: kPurple,
-                                      onChanged: (_) =>
-                                          _toggleSelect(n.id),
-                                    ),
-                                  Icon(
-                                    Icons.notifications_active_rounded,
-                                    color: kPurple,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      title,
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          color: kInk,
-                                          fontSize: 17),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text(body,
-                                  style: const TextStyle(
-                                      color: kGrey1, fontSize: 14)),
-                              const SizedBox(height: 12),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  TextButton.icon(
-                                    icon: const Icon(Icons.photo_rounded,
-                                        color: Colors.black),
-                                    label: const Text('Ver recuerdo',
-                                        style:
-                                            TextStyle(color: Colors.black)),
-                                    style: TextButton.styleFrom(
-                                      backgroundColor:
-                                          const Color(0xFF9ED3FF),
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(999)),
-                                    ),
-                                    onPressed: () =>
-                                        _showTrainMemoryDialog(context, n),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+                    children: [
+                      ..._emergencies.map(_buildEmergencyCard),
+                      ..._pending.map(_buildMemoryCard),
+                    ],
                   ),
+      ),
+    );
+  }
+
+  /// 🟥 Emergencia recibida por el cuidador
+  Widget _buildEmergencyCard(
+      QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    final name = data['consultantName'] ?? 'Consultante';
+    final lat = data['lat'];
+    final lng = data['lng'];
+    final time = (data['timestamp'] as Timestamp?)?.toDate();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFEAEA),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.red.withOpacity(0.6), width: 1.6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.warning_amber_rounded, color: Colors.red),
+              SizedBox(width: 6),
+              Text(
+                'Emergencia detectada',
+                style: TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 17),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text('Paciente: $name',
+              style: const TextStyle(color: kInk, fontSize: 15)),
+          if (time != null)
+            Text('Hora: ${time.hour}:${time.minute.toString().padLeft(2, "0")}',
+                style: const TextStyle(color: kGrey1, fontSize: 13)),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.map_rounded, color: Colors.black),
+              label: const Text('Ver emergencia',
+                  style: TextStyle(color: Colors.black)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent.withOpacity(0.15),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () async {
+                await showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => AlertDialog(
+                    backgroundColor: const Color(0xFFFFEAEA),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20)),
+                    title: Row(
+                      children: [
+                        const Icon(Icons.location_on,
+                            color: Colors.red, size: 24),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text('Ubicación de $name',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black)),
+                        ),
+                      ],
+                    ),
+                    content: SizedBox(
+                      width: 340,
+                      height: 320,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: EmergencyMapPage(
+                          consultantId: data['consultantId'] ?? '',
+                          lat: lat,
+                          lng: lng,
+                          isDialog: true,
+                        ),
+                      ),
+                    ),
+                    actions: [
+                      TextButton.icon(
+                        onPressed: () async {
+                          final url =
+                              'https://www.google.com/maps?q=$lat,$lng';
+                          if (await canLaunchUrl(Uri.parse(url))) {
+                            await launchUrl(Uri.parse(url),
+                                mode: LaunchMode.externalApplication);
+                          }
+                        },
+                        icon: const Icon(Icons.directions, color: Colors.black),
+                        label: const Text('Abrir en Google Maps',
+                            style: TextStyle(color: Colors.black)),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cerrar',
+                            style: TextStyle(color: Colors.black)),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  /// 🧠 Tarjeta de notificación local
+  Widget _buildMemoryCard(PendingNotificationRequest n) {
+    final selected = _selectedIds.contains(n.id);
+    final title =
+        (n.title?.isNotEmpty ?? false) ? n.title! : 'Recordatorio de recuerdo';
+    final body =
+        (n.body?.isNotEmpty ?? false) ? n.body! : 'Sin descripción';
+
+    return GestureDetector(
+      onTap: _selectMode ? () => _toggleSelect(n.id) : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected
+                ? kPurple.withOpacity(0.9)
+                : kPurple.withOpacity(0.4),
+            width: selected ? 2.5 : 1.2,
+          ),
+          color: selected ? kPurple.withOpacity(0.1) : Colors.white,
+        ),
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                if (_selectMode)
+                  Checkbox(
+                      value: selected,
+                      activeColor: kPurple,
+                      onChanged: (_) => _toggleSelect(n.id)),
+                const Icon(Icons.notifications_active_rounded, color: kPurple),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(title,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: kInk,
+                          fontSize: 17)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(body, style: const TextStyle(color: kGrey1, fontSize: 14)),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                icon: const Icon(Icons.photo_rounded, color: Colors.black),
+                label: const Text('Ver recuerdo',
+                    style: TextStyle(color: Colors.black)),
+                style: TextButton.styleFrom(
+                  backgroundColor: const Color(0xFF9ED3FF),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999)),
+                ),
+                onPressed: () => _showTrainMemoryDialog(context, n),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+// ╭──────────────────────────────╮
+// │ Tren caricatura estilo dibujo │
+// ╰──────────────────────────────╯
+class _TrainGraphicCartoon extends StatelessWidget {
+  final Animation<double> spin;
+  const _TrainGraphicCartoon({required this.spin});
+
+  Widget _wheel(double l, double b) => AnimatedBuilder(
+        animation: spin,
+        builder: (_, __) {
+          final a = spin.value * math.pi * 4;
+          return Positioned(
+            left: l,
+            bottom: b,
+            child: Transform.rotate(
+              angle: a,
+              child: Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                    color: Colors.red,
+                    border: Border.all(color: Colors.black, width: 2),
+                    shape: BoxShape.circle),
+              ),
+            ),
+          );
+        },
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    const base = 30.0;
+    return SizedBox(
+      width: 420,
+      height: 130,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Vagón 1 (morado)
+          Positioned(
+            left: 160,
+            bottom: base,
+            child: Container(
+              width: 90,
+              height: 55,
+              decoration: BoxDecoration(
+                  color: kPurple,
+                  border: Border.all(color: Colors.black, width: 3),
+                  borderRadius: BorderRadius.circular(6)),
+            ),
+          ),
+          _wheel(175, base - 20),
+          _wheel(220, base - 20),
+
+          // Vagón 2 (azul)
+          Positioned(
+            left: 270,
+            bottom: base,
+            child: Container(
+              width: 90,
+              height: 55,
+              decoration: BoxDecoration(
+                  color: kBlue,
+                  border: Border.all(color: Colors.black, width: 3),
+                  borderRadius: BorderRadius.circular(6)),
+            ),
+          ),
+          _wheel(285, base - 20),
+          _wheel(330, base - 20),
+
+          // Locomotora (roja)
+          Positioned(
+            left: 50,
+            bottom: base,
+            child: Container(
+              width: 100,
+              height: 65,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE74C3C),
+                border: Border.all(color: Colors.black, width: 3),
+              ),
+            ),
+          ),
+          // Cabina (azul fuerte)
+          Positioned(
+            left: 90,
+            bottom: base + 30,
+            child: Container(
+              width: 60,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.blue.shade700,
+                border: Border.all(color: Colors.black, width: 3),
+              ),
+            ),
+          ),
+          // Chimenea amarilla
+          Positioned(
+            left: 60,
+            bottom: base + 60,
+            child: Container(
+              width: 20,
+              height: 25,
+              decoration: BoxDecoration(
+                color: Colors.yellow.shade600,
+                border: Border.all(color: Colors.black, width: 3),
+              ),
+            ),
+          ),
+          // Techo verde
+          Positioned(
+            left: 85,
+            bottom: base + 68,
+            child: Container(
+              width: 70,
+              height: 10,
+              color: Colors.green.shade400,
+            ),
+          ),
+          // Ventana amarilla
+          Positioned(
+            left: 110,
+            bottom: base + 40,
+            child: Container(
+              width: 25,
+              height: 25,
+              decoration: BoxDecoration(
+                color: Colors.yellow.shade400,
+                border: Border.all(color: Colors.black, width: 2),
+              ),
+            ),
+          ),
+          _wheel(65, base - 20),
+          _wheel(110, base - 20),
+        ],
       ),
     );
   }
@@ -518,148 +776,9 @@ class _TrainMemoryDialogState extends State<TrainMemoryDialog>
 }
 
 // ╭──────────────────────────────╮
-// │ Tren caricatura estilo dibujo │
+// │ Pistas, humo y diálogos      │
 // ╰──────────────────────────────╯
-class _TrainGraphicCartoon extends StatelessWidget {
-  final Animation<double> spin;
-  const _TrainGraphicCartoon({required this.spin});
 
-  Widget _wheel(double l, double b) => AnimatedBuilder(
-        animation: spin,
-        builder: (_, __) {
-          final a = spin.value * math.pi * 4;
-          return Positioned(
-            left: l,
-            bottom: b,
-            child: Transform.rotate(
-              angle: a,
-              child: Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                    color: Colors.red,
-                    border: Border.all(color: Colors.black, width: 2),
-                    shape: BoxShape.circle),
-              ),
-            ),
-          );
-        },
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    const base = 30.0;
-    return SizedBox(
-      width: 420,
-      height: 130,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          // Vagón 1 (morado)
-          Positioned(
-            left: 160,
-            bottom: base,
-            child: Container(
-              width: 90,
-              height: 55,
-              decoration: BoxDecoration(
-                  color: kPurple,
-                  border: Border.all(color: Colors.black, width: 3),
-                  borderRadius: BorderRadius.circular(6)),
-            ),
-          ),
-          _wheel(175, base - 20),
-          _wheel(220, base - 20),
-
-          // Vagón 2 (azul)
-          Positioned(
-            left: 270,
-            bottom: base,
-            child: Container(
-              width: 90,
-              height: 55,
-              decoration: BoxDecoration(
-                  color: kBlue,
-                  border: Border.all(color: Colors.black, width: 3),
-                  borderRadius: BorderRadius.circular(6)),
-            ),
-          ),
-          _wheel(285, base - 20),
-          _wheel(330, base - 20),
-
-          // Locomotora (roja)
-          Positioned(
-            left: 50,
-            bottom: base,
-            child: Container(
-              width: 100,
-              height: 65,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE74C3C),
-                border: Border.all(color: Colors.black, width: 3),
-              ),
-            ),
-          ),
-          // Cabina (azul fuerte)
-          Positioned(
-            left: 90,
-            bottom: base + 30,
-            child: Container(
-              width: 60,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.blue.shade700,
-                border: Border.all(color: Colors.black, width: 3),
-              ),
-            ),
-          ),
-          // Chimenea amarilla
-          Positioned(
-            left: 60,
-            bottom: base + 60,
-            child: Container(
-              width: 20,
-              height: 25,
-              decoration: BoxDecoration(
-                color: Colors.yellow.shade600,
-                border: Border.all(color: Colors.black, width: 3),
-              ),
-            ),
-          ),
-          // Techo verde
-          Positioned(
-            left: 85,
-            bottom: base + 68,
-            child: Container(
-              width: 70,
-              height: 10,
-              color: Colors.green.shade400,
-            ),
-          ),
-          // Ventana amarilla
-          Positioned(
-            left: 110,
-            bottom: base + 40,
-            child: Container(
-              width: 25,
-              height: 25,
-              decoration: BoxDecoration(
-                color: Colors.yellow.shade400,
-                border: Border.all(color: Colors.black, width: 2),
-              ),
-            ),
-          ),
-          _wheel(65, base - 20),
-          _wheel(110, base - 20),
-        ],
-      ),
-    );
-  }
-}
-
-// ╭──────────────────────────────╮
-// │ Pistas y humo animado        │
-// ╰──────────────────────────────╯
 class _TrackPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -723,9 +842,6 @@ class _SmokePuff extends StatelessWidget {
       );
 }
 
-// ╭──────────────────────────────╮
-// │ Tarjeta de recuerdo          │
-// ╰──────────────────────────────╯
 class _MemoryCardWhiteBorder extends StatelessWidget {
   final String? imageUrl;
   final String text;
@@ -780,9 +896,62 @@ class _MemoryCardWhiteBorder extends StatelessWidget {
   }
 }
 
-// ╭──────────────────────────────╮
-// │ Diálogos OK / Confirmación   │
-// ╰──────────────────────────────╯
+/// 🟣 Diálogo tipo “Tienes cambios sin guardar” para eliminar
+Future<bool> _showDeleteDialog(BuildContext context,
+    {required String message}) async {
+  final result = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => AlertDialog(
+      backgroundColor: const Color(0xFFF3E9FF),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        children: const [
+          Icon(Icons.warning_amber_rounded, color: kPurple, size: 26),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Tienes cambios sin guardar',
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: Text(
+        message,
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: Colors.black87, fontSize: 15),
+      ),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancelar cambios',
+              style:
+                  TextStyle(color: kPurple, fontWeight: FontWeight.w600)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: TextButton.styleFrom(
+            backgroundColor: kPurple,
+            foregroundColor: Colors.black,
+            minimumSize: const Size(160, 46),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+          ),
+          child: const Text('Eliminar y salir',
+              style: TextStyle(fontWeight: FontWeight.w600)),
+        ),
+      ],
+    ),
+  );
+  return result ?? false;
+}
+
 Future<void> _showOkDialog(BuildContext c,
     {required String title, required String message}) async {
   await showDialog<void>(
@@ -807,34 +976,6 @@ Future<void> _showOkDialog(BuildContext c,
   );
 }
 
-Future<bool> _showConfirmDialog(BuildContext c,
-    {required String message}) async {
-  final res = await showDialog<bool>(
-    context: c,
-    builder: (_) => AlertDialog(
-      title: const Text('Confirmar',
-          style: TextStyle(fontWeight: FontWeight.w700, color: kInk)),
-      content: Text(message),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(c, false),
-          child: const Text('Cancelar', style: TextStyle(color: kPurple)),
-        ),
-        TextButton(
-          style: TextButton.styleFrom(
-              backgroundColor: kPurple,
-              foregroundColor: kInk,
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-          onPressed: () => Navigator.pop(c, true),
-          child: const Text('Aceptar'),
-        ),
-      ],
-    ),
-  );
-  return res ?? false;
-}
-
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
   @override
@@ -842,7 +983,7 @@ class _EmptyState extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Text(
-            'No hay notificaciones pendientes.\n\nPrograma un recuerdo desde el calendario o pulsa “Actualizar”.',
+            'No hay notificaciones pendientes.\n\nPrograma un recuerdo o revisa emergencias activas.',
             textAlign: TextAlign.center,
             style: TextStyle(color: kGrey1, fontSize: 16, height: 1.35),
           ),

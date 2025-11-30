@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:whoami_app/services/fcm_token_service.dart';
 
 import '../brand_logo.dart';
 import '../theme.dart';
@@ -331,104 +332,103 @@ Future<void> _submit() async {
 
     // 🔹 Intentar iniciar sesión directamente
     try {
-  await auth.signInWithEmailAndPassword(email: email, password: password);
-} on FirebaseAuthException catch (e) {
-  // 🧩 Detecta el motivo exacto y muestra un mensaje claro
-  if (e.code == 'user-not-found') {
-    // 🔸 Correo no registrado
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFFF3E9FF),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Correo no registrado',
-          style: TextStyle(
-              color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18),
-          textAlign: TextAlign.center,
-        ),
-        content: const Text(
-          'No existe ninguna cuenta asociada a este correo electrónico.\n\n'
-          '¿Deseas registrarte con este correo?',
-          style: TextStyle(color: Colors.black87, fontSize: 15),
-          textAlign: TextAlign.center,
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            style: TextButton.styleFrom(
-              backgroundColor: const Color(0xFFD6A7F4),
-              foregroundColor: Colors.black,
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      await auth.signInWithEmailAndPassword(email: email, password: password);
+    } on FirebaseAuthException catch (e) {
+      // 🧩 Detecta el motivo exacto y muestra un mensaje claro
+      if (e.code == 'user-not-found') {
+        // 🔸 Correo no registrado
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFFF3E9FF),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20)),
+            title: const Text(
+              'Correo no registrado',
+              style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18),
+              textAlign: TextAlign.center,
             ),
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(
-              backgroundColor: const Color(0xFF9ED3FF),
-              foregroundColor: Colors.black,
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            content: const Text(
+              'No existe ninguna cuenta asociada a este correo electrónico.\n\n'
+              '¿Deseas registrarte con este correo?',
+              style: TextStyle(color: Colors.black87, fontSize: 15),
+              textAlign: TextAlign.center,
             ),
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pushNamed(context, '/register'); // 👈 tu pantalla de registro
-            },
-            child: const Text('Registrarme'),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                style: TextButton.styleFrom(
+                  backgroundColor: const Color(0xFFD6A7F4),
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                style: TextButton.styleFrom(
+                  backgroundColor: const Color(0xFF9ED3FF),
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/register'); // 👈 Registro
+                },
+                child: const Text('Registrarme'),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-    setState(() => _loading = false);
-    return;
-
-  } else if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-    // 🔸 Contraseña incorrecta (Firebase usa ambos códigos según versión)
-    setState(() {
-      _passwordError = true;
-      _passwordErrorText = 'Contraseña incorrecta.';
-    });
-    _pass.clear();
-    _passShakeKey.currentState?.shake();
-    setState(() => _loading = false);
-    return;
-
-  } else if (e.code == 'user-disabled') {
-    // 🔸 Cuenta deshabilitada
-    await _showDialogMsg(
-      'Cuenta deshabilitada',
-      'Tu cuenta ha sido desactivada. Contacta al administrador.',
-    );
-    setState(() => _loading = false);
-    return;
-
-  } else if (e.code == 'invalid-email') {
-    // 🔸 Formato de correo inválido
-    await _showDialogMsg(
-      'Correo inválido',
-      'El formato del correo electrónico no es válido. Por favor revisa e intenta de nuevo.',
-    );
-    setState(() => _loading = false);
-    return;
-
-  } else {
-    // 🔸 Cualquier otro error de FirebaseAuth
-    await _showDialogMsg(
-      'Error',
-      'No se pudo iniciar sesión.\nCódigo de error: ${e.code}',
-    );
-    setState(() => _loading = false);
-    return;
-  }
-}
-
+        );
+        setState(() => _loading = false);
+        return;
+      } else if (e.code == 'wrong-password' ||
+          e.code == 'invalid-credential') {
+        // 🔸 Contraseña incorrecta
+        setState(() {
+          _passwordError = true;
+          _passwordErrorText = 'Contraseña incorrecta.';
+        });
+        _pass.clear();
+        _passShakeKey.currentState?.shake();
+        setState(() => _loading = false);
+        return;
+      } else if (e.code == 'user-disabled') {
+        await _showDialogMsg(
+          'Cuenta deshabilitada',
+          'Tu cuenta ha sido desactivada. Contacta al administrador.',
+        );
+        setState(() => _loading = false);
+        return;
+      } else if (e.code == 'invalid-email') {
+        await _showDialogMsg(
+          'Correo inválido',
+          'El formato del correo electrónico no es válido. Revisa e intenta de nuevo.',
+        );
+        setState(() => _loading = false);
+        return;
+      } else {
+        await _showDialogMsg(
+          'Error',
+          'No se pudo iniciar sesión.\nCódigo de error: ${e.code}',
+        );
+        setState(() => _loading = false);
+        return;
+      }
+    }
 
     // 🔸 Usuario autenticado correctamente
     final user = auth.currentUser!;
     await user.reload();
     final refreshedUser = auth.currentUser!;
+
+    // 🔹 Guardar el token FCM del usuario actual (PASO 3B)
+    await FCMTokenService.saveCurrentUserToken();
 
     // 🔸 Verificar si el correo está confirmado
     if (!refreshedUser.emailVerified) {
@@ -489,6 +489,7 @@ Future<void> _submit() async {
     if (mounted) setState(() => _loading = false);
   }
 }
+
 
 
   // --- UI de inicio de sesión ---

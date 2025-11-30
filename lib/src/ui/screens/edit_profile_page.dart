@@ -38,7 +38,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _load();
   }
 
-  // ===== Helpers UI: diálogos modales =====
   Future<void> _showDialogOk({
     required String title,
     required String message,
@@ -60,11 +59,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
         content: Text(message),
         actions: [
           FilledButton(
-            style: pillLav(), // Fondo morado
+            style: pillLav(),
             onPressed: () => Navigator.pop(context),
             child: const Text(
               'Aceptar',
-              // ⬇️ Texto negro (antes blanco)
               style: TextStyle(color: Colors.black, fontWeight: FontWeight.w700),
             ),
           ),
@@ -151,13 +149,69 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
   }
 
+  // ============================================================
+  // ✅ NUEVA FUNCIÓN: Elegir entre cámara o galería
+  // ============================================================
   Future<void> _pickPhoto() async {
-    final img = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
-    if (img != null) {
-      setState(() => _localPhoto = File(img.path));
-      _recomputeDirty();
-    }
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 14),
+              const Text(
+                "Seleccionar foto",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const Divider(height: 20),
+
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: kPurple),
+                title: const Text("Tomar foto"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final img = await ImagePicker().pickImage(
+                    source: ImageSource.camera,
+                    imageQuality: 85,
+                  );
+                  if (img != null) {
+                    setState(() => _localPhoto = File(img.path));
+                    _recomputeDirty();
+                  }
+                },
+              ),
+
+              ListTile(
+                leading: const Icon(Icons.photo, color: kPurple),
+                title: const Text("Elegir de galería"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final img = await ImagePicker().pickImage(
+                    source: ImageSource.gallery,
+                    imageQuality: 85,
+                  );
+                  if (img != null) {
+                    setState(() => _localPhoto = File(img.path));
+                    _recomputeDirty();
+                  }
+                },
+              ),
+
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
   }
+
+  // ============================================================
 
   Future<void> _pickBirthDate() async {
     if (!_isCaregiver) return;
@@ -187,7 +241,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     try {
       final ref = FirebaseStorage.instance
           .ref()
-          .child('users') // si cambias reglas a profile_images, ajusta aquí
+          .child('users')
           .child(user.uid)
           .child('avatar.jpg');
 
@@ -197,17 +251,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
       );
 
       if (task.state == TaskState.success) {
-        final url = await ref.getDownloadURL();
-        return url;
+        return await ref.getDownloadURL();
       } else {
-        debugPrint('⚠️ Subida no exitosa: ${task.state}');
         return _photoUrl;
       }
-    } on FirebaseException catch (e) {
-      debugPrint('❌ Storage error: ${e.code} ${e.message}');
-      rethrow;
     } catch (e) {
-      debugPrint('❌ Error subiendo imagen: $e');
       rethrow;
     }
   }
@@ -226,7 +274,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final user = FirebaseAuth.instance.currentUser!;
 
     try {
-      // FOTO
       if (_localPhoto != null) {
         final url = await _uploadPhoto(user);
         if (url != null) {
@@ -239,7 +286,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
         }
       }
 
-      // DATOS
       if (_isCaregiver) {
         final updates = <String, dynamic>{};
 
@@ -273,7 +319,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
       _dirty = false;
       if (mounted) setState(() {});
 
-      // ✅ Éxito: modal
       await _showDialogOk(
         title: '¡Listo!',
         message: 'Cambios guardados exitosamente.',
@@ -281,18 +326,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
       );
 
       if (exitAfter && mounted) Navigator.maybePop(context);
-    } on FirebaseException catch (e) {
-      await _showDialogOk(
-        title: 'No se pudo guardar',
-        message: 'Ocurrió un error (${e.code}). Intenta de nuevo.',
-        icon: Icons.error_outline,
-      );
-    } catch (e) {
-      await _showDialogOk(
-        title: 'No se pudo guardar',
-        message: 'Ocurrió un error inesperado.\n$e',
-        icon: Icons.error_outline,
-      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -320,7 +353,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
             onPressed: () => Navigator.pop(context, _LeaveAction.saveAndExit),
             child: const Text(
               'Guardar y salir',
-              // ⬇️ Texto negro (antes blanco)
               style: TextStyle(color: Colors.black, fontWeight: FontWeight.w700),
             ),
           ),
@@ -340,7 +372,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
       case _LeaveAction.saveAndExit:
         await _save(exitAfter: true);
         return false;
-      case _LeaveAction.keepEditing:
       default:
         return false;
     }
@@ -359,7 +390,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     if (mounted) setState(() {});
   }
 
-  // 📩 Solicitar cambio de contraseña (también con modal)
   Future<void> _requestPasswordReset() async {
     final email = _email.text.trim().toLowerCase();
     if (email.isEmpty) {
@@ -379,19 +409,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
             'Si no lo ves, revisa también SPAM.',
         icon: Icons.mark_email_read_outlined,
       );
-    } on FirebaseAuthException catch (e) {
-      String msg = 'No se pudo enviar el correo de recuperación.';
-      if (e.code == 'invalid-email') msg = 'El correo no es válido.';
-      if (e.code == 'user-not-found') msg = 'No existe una cuenta con ese correo.';
-      await _showDialogOk(
-        title: 'No se pudo enviar',
-        message: msg,
-        icon: Icons.error_outline,
-      );
     } catch (e) {
       await _showDialogOk(
-        title: 'Error',
-        message: 'Ocurrió un error inesperado.\n$e',
+        title: 'No se pudo enviar',
+        message: 'Ocurrió un error inesperado.',
         icon: Icons.error_outline,
       );
     }
@@ -437,7 +458,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                         children: [
                           const SizedBox(height: 20),
 
-                          // Foto
+                          // FOTO DE PERFIL
                           Center(
                             child: Stack(
                               alignment: Alignment.bottomRight,
@@ -448,10 +469,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                       ? FileImage(_localPhoto!)
                                       : (_photoUrl != null ? NetworkImage(_photoUrl!) : null)
                                           as ImageProvider<Object>?,
+                                  backgroundColor: Colors.black,
                                   child: (_localPhoto == null && _photoUrl == null)
                                       ? const Icon(Icons.person, size: 48, color: Colors.white)
                                       : null,
-                                  backgroundColor: Colors.black,
                                 ),
                                 Material(
                                   color: kPurple,
@@ -464,7 +485,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                       padding: EdgeInsets.all(10),
                                       child: Icon(
                                         Icons.photo_camera_outlined,
-                                        // ⬇️ Ícono negro (antes blanco)
                                         color: Colors.black,
                                         size: 22,
                                       ),
@@ -487,6 +507,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                             onChanged: (_) => _recomputeDirty(),
                           ),
                           const SizedBox(height: 12),
+
                           TextField(
                             controller: _lastName,
                             enabled: _isCaregiver,
@@ -524,7 +545,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           const Divider(),
                           const SizedBox(height: 10),
 
-                          // Botón morado con letras e ícono NEGROS
                           SizedBox(
                             height: 52,
                             child: FilledButton.icon(
@@ -564,7 +584,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                   onPressed: (_saving || !_dirty) ? null : () => _save(),
                                   icon: _saving
                                       ? const SizedBox(
-                                          width: 18, height: 18,
+                                          width: 18,
+                                          height: 18,
                                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
                                         )
                                       : const Icon(Icons.save_outlined, color: Colors.black),
@@ -584,6 +605,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           ),
 
                           const SizedBox(height: 8),
+
                           if (!_dirty && !_saving)
                             const Text(
                               'Modifica tus datos para habilitar Guardar y Cancelar.',

@@ -1,7 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Carpeta en cache para imágenes temporales -->
-    <cache-path name="images" path="images/"/>
-    <!-- Carpeta interna de la app para fotos -->
-    <files-path name="pictures" path="pictures/"/>
+    <!-- 📂 Acceso a la carpeta interna de archivos -->
+    <files-path
+        name="internal_files"
+        path="." />
+
+    <!-- 📂 Acceso a la carpeta de caché -->
+    <cache-path
+        name="cache"
+        path="." />
+
+    <!-- 📸 Acceso a la carpeta de imágenes externas -->
+    <external-files-path
+        name="external_images"
+        path="Pictures/" />
+
+    <!-- 📥 Acceso a almacenamiento externo (descargas, etc.) -->
+    <external-path
+        name="external_storage"
+        path="." />
 </paths>

@@ -36,10 +36,15 @@ import 'ui/screens/memorama_page.dart';   // Juego del memorama (MemoramaPage)
 // Notificaciones
 import 'ui/screens/notifications_page.dart'; // Nueva pantalla de notificaciones
 
-/// Aplicación principal de Who Am I?
-///
-/// Define el árbol de navegación, tema visual y localización de la app.
-/// Desde aquí se gestiona el flujo de pantallas y rutas globales.
+// 💬 Asistente de memoria (Gemini)
+import 'ui/screens/assistant_page.dart';
+
+/// =============================================================
+/// APLICACIÓN PRINCIPAL WHO AM I?
+/// =============================================================
+/// Define el árbol de navegación, tema visual y localización.
+/// Gestiona el flujo de pantallas, registro, roles y funciones IA.
+/// =============================================================
 class WhoAmIApp extends StatelessWidget {
   const WhoAmIApp({super.key});
 
@@ -63,7 +68,9 @@ class WhoAmIApp extends StatelessWidget {
       ],
       locale: const Locale('es', 'MX'),
 
-      // Rutas de navegación principales
+      // =============================================================
+      // RUTAS DE NAVEGACIÓN PRINCIPALES
+      // =============================================================
       initialRoute: '/',
       routes: {
         // --- Raíz y flujo inicial ---
@@ -100,6 +107,9 @@ class WhoAmIApp extends StatelessWidget {
 
         // --- Notificaciones ---
         NotificationsPage.route: (_) => const NotificationsPage(),
+
+        // --- Chat asistente IA (Gemini) ---
+        AssistantPage.route: (_) => const AssistantPage(),
       },
     );
   }

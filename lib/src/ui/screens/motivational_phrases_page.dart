@@ -7,20 +7,28 @@ class MotivationalPhrasesPage extends StatefulWidget {
   static const route = '/motivational-phrases';
 
   @override
-  State<MotivationalPhrasesPage> createState() => _MotivationalPhrasesPageState();
+  State<MotivationalPhrasesPage> createState() =>
+      _MotivationalPhrasesPageState();
 }
 
 class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
-  // Colores base
+  // PALETA EXACTA PASTEL
+  static const Color yellow = Color(0xFFFFF49F);
+  static const Color pink = Color(0xFFFF9FA1);
   static const Color blue = Color(0xFF9ED3FF);
-  static const Color text = Color(0xFF111111);
+  static const Color green = Color(0xFF9EEE97);
+  static const Color purple = Color(0xFFD99FFF);
 
-  final _tts = FlutterTts();
-  final _rnd = Random();
+  static const Color textColor = Color(0xFF111111);
 
-  // ================== 40 FRASES (agrupadas) ==================
+  final FlutterTts _tts = FlutterTts();
+  final Random _rnd = Random();
+
+  bool _showMenu = true;
+
+  // FRASES POR CATEGORÍA (5 x 8)
   final Map<String, List<String>> _phrasesByCategory = {
-    "Ánimo diario": [
+    "Ánimo": [
       "Hoy es un buen día para intentarlo con calma.",
       "Paso a pasito, lo estoy haciendo bien.",
       "Puedo aprender algo pequeño hoy.",
@@ -30,7 +38,7 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
       "Cada momento es una nueva oportunidad.",
       "Hago lo mejor que puedo y eso está bien.",
     ],
-    "Calma y respiración": [
+    "Calma": [
       "Respiro lento tres veces y siento paz.",
       "Puedo pausar un momento y descansar.",
       "Mi cuerpo se relaja cuando respiro suave.",
@@ -40,7 +48,7 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
       "Estoy a salvo aquí y ahora.",
       "Puedo soltar la tensión de mis hombros y seguir.",
     ],
-    "Memoria e identidad": [
+    "Memoria": [
       "Mi nombre es importante y vale mucho.",
       "Hay recuerdos bonitos guardados en mi corazón.",
       "Puedo pedir ayuda cuando la necesito.",
@@ -50,7 +58,7 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
       "Puedo mirar una foto y sonreír.",
       "Mi historia sigue, paso a paso.",
     ],
-    "Autonomía y pequeños logros": [
+    "Autonomía": [
       "Hoy puedo lograr una tarea sencilla.",
       "Si no sale a la primera, lo intento de nuevo.",
       "Puedo seguir instrucciones cortas y claras.",
@@ -60,7 +68,7 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
       "Celebro lo que sí pude hacer hoy.",
       "Puedo pedir indicaciones y seguirlas.",
     ],
-    "Afecto y compañía": [
+    "Afecto": [
       "No estoy solo: hay gente que me quiere.",
       "Puedo pedir un abrazo cuando lo necesite.",
       "Mi voz es escuchada con cariño.",
@@ -71,44 +79,58 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
       "La ternura también es una fuerza.",
     ],
   };
-  // ================== FIN FRASES ==================
+
+  // COLORES POR CATEGORÍA
+  late final Map<String, Color> _catColor = {
+    "Ánimo": yellow,
+    "Calma": pink,
+    "Memoria": blue,
+    "Autonomía": green,
+    "Afecto": purple,
+  };
+
+  // ICONOS POR CATEGORÍA
+  late final Map<String, IconData> _catIcon = {
+    "Ánimo": Icons.wb_sunny_rounded,
+    "Calma": Icons.self_improvement_rounded,
+    "Memoria": Icons.memory_rounded,
+    "Autonomía": Icons.track_changes_rounded,
+    "Afecto": Icons.favorite_rounded,
+  };
 
   late final List<String> _categories;
-  String _selected = "Aleatorias";
-  List<String> _visible = const [];
+
+  String _selected = "Ánimo";
+  List<String> _visible = [];
 
   @override
   void initState() {
     super.initState();
-    _categories = ["Aleatorias", ..._phrasesByCategory.keys];
+    _categories = [..._phrasesByCategory.keys];
     _configureTts();
-    _pickVisible();
   }
 
   Future<void> _configureTts() async {
     await _tts.setLanguage("es-MX");
     await _tts.setPitch(1.0);
-    await _tts.setSpeechRate(0.5); // ritmo claro
+    await _tts.setSpeechRate(0.5);
   }
 
-  List<String> _poolFor(String category) {
-    if (category == "Aleatorias") {
-      return _phrasesByCategory.values.expand((x) => x).toList();
-    }
-    return _phrasesByCategory[category] ?? const [];
-  }
+  void _loadCategory(String cat) async {
+    await _tts.stop();
+    _selected = cat;
 
-  void _pickVisible() {
-    final pool = _poolFor(_selected);
-    final copy = List<String>.from(pool)..shuffle(_rnd);
+    final list = List<String>.from(_phrasesByCategory[cat]!)..shuffle(_rnd);
+
     setState(() {
-      _visible = copy.take(5).toList();
+      _visible = list;
+      _showMenu = false;
     });
   }
 
-  Future<void> _speak(String text) async {
+  Future<void> _speak(String t) async {
     await _tts.stop();
-    await _tts.speak(text);
+    await _tts.speak(t);
   }
 
   @override
@@ -120,114 +142,120 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar:
-          AppBar(title: const Text("Frases motivadoras"), centerTitle: true, elevation: 0),
-      body: Padding(
-        // un poco más de padding inferior para “subir” el botón
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 58), // 👈 ajustado
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    "Selecciona una categoría",
-                    style: TextStyle(color: Colors.black54),
-                  ),
-                ),
-                SizedBox(
-                  height: 38,
-                  width: 220,
-                  child: DropdownButtonHideUnderline(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.black12),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: DropdownButton<String>(
-                          isExpanded: true,
-                          value: _selected,
-                          items: _categories
-                              .map((c) => DropdownMenuItem(
-                                    value: c,
-                                    child: Text(
-                                      c == "Aleatorias"
-                                          ? "— Mostrar aleatorias —"
-                                          : c,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ))
-                              .toList(),
-                          onChanged: (val) {
-                            if (val == null) return;
-                            setState(() => _selected = val);
-                            _pickVisible();
-                          },
-                        ),
-                      ),
+      appBar: AppBar(
+        title: const Text("Frases"),
+        centerTitle: true,
+        elevation: 0,
+      ),
+      body: _showMenu ? _buildMenu() : _buildPhrases(),
+    );
+  }
+
+  // ⭐ MENÚ DE CATEGORÍAS
+  Widget _buildMenu() {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: GridView.count(
+        crossAxisCount: 2,
+        crossAxisSpacing: 14,
+        mainAxisSpacing: 14,
+        children: _categories.map((cat) {
+          return GestureDetector(
+            onTap: () => _loadCategory(cat),
+            child: Container(
+              decoration: BoxDecoration(
+                color: _catColor[cat],
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: const [
+                  BoxShadow(
+                    blurRadius: 6,
+                    offset: Offset(0, 4),
+                    color: Colors.black26,
+                  )
+                ],
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(_catIcon[cat], size: 48, color: textColor),
+                    const SizedBox(height: 10),
+                    Text(
+                      cat,
+                      style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: textColor),
+                      textAlign: TextAlign.center,
                     ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Lista de frases
-            Expanded(
-              child: ListView.builder(
-                itemCount: _visible.length,
-                itemBuilder: (_, i) {
-                  final phrase = _visible[i];
-                  return _PhraseCard(
-                    text: phrase,
-                    onTap: () => _speak(phrase),
-                  );
-                },
-              ),
-            ),
-
-            // Botón: cambia automáticamente a “Aleatorias”
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _selected = "Aleatorias"; // 👈 forzar categoría
-                  });
-                  _pickVisible();
-                },
-                icon: const Icon(Icons.refresh),
-                label: Text(
-                  _selected == "Aleatorias"
-                      ? "Mostrar otras frases"
-                      : "Ver frases aleatorias",
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: blue,
-                  foregroundColor: text,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ⭐ LISTA DE FRASES
+  Widget _buildPhrases() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 70),
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              itemCount: _visible.length,
+              itemBuilder: (_, i) {
+                return _PhraseCard(
+                  text: _visible[i],
+                  color: _catColor[_selected]!,
+                  icon: _catIcon[_selected]!,
+                  onTap: () => _speak(_visible[i]),
+                );
+              },
+            ),
+          ),
+
+          // BOTÓN VOLVER AL MENÚ
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => setState(() => _showMenu = true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE9D8FF),
+                foregroundColor: Color(0xFF6B2FAF),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(22)),
+                elevation: 4,
+              ),
+              child: const Text(
+                "Volver al menú",
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
+// ⭐ CARD INDIVIDUAL
 class _PhraseCard extends StatelessWidget {
   final String text;
   final VoidCallback onTap;
-  const _PhraseCard({required this.text, required this.onTap});
+  final Color color;
+  final IconData icon;
+
+  const _PhraseCard({
+    required this.text,
+    required this.onTap,
+    required this.color,
+    required this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -238,12 +266,8 @@ class _PhraseCard extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 8),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
+          color: color,
           borderRadius: BorderRadius.circular(14),
-          gradient: const LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [Color(0xFF9ED3FF), Color(0xFFE9F6FF)],
-          ),
           boxShadow: const [
             BoxShadow(
               blurRadius: 6,
@@ -254,16 +278,19 @@ class _PhraseCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.format_quote, size: 22),
-            const SizedBox(width: 10),
+            Icon(icon, size: 22, color: Colors.black),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 text,
-                style: const TextStyle(fontSize: 15.5),
+                style: const TextStyle(
+                  fontSize: 15.5,
+                  height: 1.3,
+                  color: Colors.black,
+                ),
               ),
             ),
-            const SizedBox(width: 4),
-            const Icon(Icons.volume_up, size: 20),
+            const Icon(Icons.volume_up, size: 22, color: Colors.black),
           ],
         ),
       ),

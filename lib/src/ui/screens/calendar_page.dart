@@ -238,7 +238,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
                 // 🔁 Frecuencia personalizada
                 DropdownButtonFormField<String>(
-                  value: _cadence.name,
+                  initialValue: _cadence.name,
                   decoration: const InputDecoration(
                     labelText: 'Frecuencia del recordatorio',
                   ),
@@ -481,7 +481,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Calendario de recuerdos'),
+        title: const Text('Recuerdos'),
         centerTitle: true,
         backgroundColor: Colors.white,
         foregroundColor: kInk,

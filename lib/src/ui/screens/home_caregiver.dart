@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'package:vibration/vibration.dart';
+import 'package:url_launcher/url_launcher.dart'; // 🌍 abrir en Google Maps
 
 import '../theme.dart';
 import 'settings_page.dart';
@@ -9,17 +12,17 @@ import 'quick_guides_page.dart';
 import 'patients_list_page.dart';
 import 'calendar_page.dart';
 import 'notifications_page.dart';
+import 'emergency_map_page.dart';
 import 'package:whoami_app/services/memories_scheduler.dart';
 import 'package:whoami_app/services/notifications_service.dart';
+import 'assistant_page.dart';
 
 /// =============================================================
-/// HOME CAREGIVER PAGE — VERSIÓN FINAL FUNCIONAL
+/// HOME CAREGIVER PAGE — VERSIÓN FINAL FUNCIONAL MEJORADA
 /// =============================================================
-
 class HomeCaregiverPage extends StatefulWidget {
   const HomeCaregiverPage({super.key, this.displayName});
   static const route = '/home/caregiver';
-
   final String? displayName;
 
   @override
@@ -29,30 +32,256 @@ class HomeCaregiverPage extends StatefulWidget {
 class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
   int _notifCount = 0;
   bool _loadingNotif = true;
+  String? _lastAlertId;
 
   @override
   void initState() {
     super.initState();
-    _initializeHome();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _initializeHome();
+      _listenForEmergencyAlerts(); // 🔥 escucha activa
+    });
   }
 
   Future<void> _initializeHome() async {
     try {
-      // Inicializar el servicio de notificaciones
       await NotificationsService.ensureInitialized();
-
-      // Reprogramar los recordatorios de recuerdos para el usuario actual
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
         await MemoriesScheduler.scheduleAllForUser(uid);
       }
-
-      // Cargar cantidad inicial de notificaciones
       await _loadNotifCount();
     } catch (e) {
       debugPrint('⚠️ Error en inicialización del HomeCaregiver: $e');
     }
   }
+
+  /// =============================================================
+  /// 🆘 FUNCIÓN NUEVA → limpia emergencia + notificaciones
+  /// =============================================================
+  Future<void> _resolveEmergency(String docId) async {
+    try {
+      // 1) marcar como resuelta en Firestore
+      await FirebaseFirestore.instance
+          .collection('emergencies')
+          .doc(docId)
+          .update({'active': false});
+
+      // 2) borrar notificaciones locales de emergencia
+      final pending = await NotificationsService.pendingNotificationRequests();
+      for (final item in pending) {
+        if (item.payload == 'emergency') {
+          await NotificationsService.cancel(item.id);
+        }
+      }
+
+      // 3) recargar
+      await _loadNotifCount();
+    } catch (e) {
+      debugPrint("⚠️ Error resolviendo emergencia: $e");
+    }
+  }
+
+  /// =============================================================
+/// 🔥 ESCUCHA EN TIEMPO REAL DE EMERGENCIAS — VERSIÓN PREMIUM
+/// =============================================================
+void _listenForEmergencyAlerts() {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return;
+
+  final emergenciesRef = FirebaseFirestore.instance
+      .collection('emergencies')
+      .where('caregiverId', isEqualTo: uid)
+      .where('active', isEqualTo: true)
+      .orderBy('timestamp', descending: true);
+
+  emergenciesRef.snapshots(includeMetadataChanges: true).listen((snapshot) {
+    if (snapshot.docs.isEmpty) return;
+
+    for (final doc in snapshot.docs) {
+      final alertId = doc.id;
+
+      // Evitar repetir alertas
+      if (_lastAlertId == alertId) continue;
+      _lastAlertId = alertId;
+
+      final data = doc.data();
+      final consultantId = data['consultantId'] ?? '';
+      final consultantName = data['consultantName'] ?? 'Consultante';
+      final lat = data['lat'];
+      final lng = data['lng'];
+      final title = data['title'] ?? '🚨 Emergencia detectada';
+      final body = data['body'] ?? '$consultantName necesita ayuda.';
+
+      if (lat == null || lng == null) continue;
+
+      debugPrint('🆘 Emergencia recibida en tiempo real para cuidador $uid');
+
+      // Vibración + notificación instantánea
+      if (!kIsWeb) {
+        NotificationsService.showInstant(title: title, body: body);
+        Vibration.vibrate(duration: 1500, amplitude: 255);
+      }
+
+      if (!mounted) return;
+
+      // ====== ALERTA PREMIUM ======
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(22),
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFFFFDDDD),
+                    Color(0xFFFFF1F1),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.20),
+                    blurRadius: 22,
+                    offset: const Offset(0, 8),
+                  )
+                ],
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  
+                  // 🔥 Encabezado premium
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.warning_rounded,
+                            color: Colors.red, size: 32),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Emergencia de $consultantName',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // Mensaje
+                  Text(
+                    body,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 16,
+                      height: 1.3,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  // 🌍 MAPA
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 240,
+                      child: EmergencyMapPage(
+                        consultantId: consultantId,
+                        lat: lat,
+                        lng: lng,
+                        isDialog: true,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // 🌐 BOTÓN GOOGLE MAPS
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.navigation_rounded, color: Colors.white),
+                      label: const Text(
+                        "Abrir en Google Maps",
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          color: Colors.white,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.redAccent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 4,
+                      ),
+                      onPressed: () async {
+                        final url = 'https://www.google.com/maps?q=$lat,$lng';
+                        final uri = Uri.parse(url);
+
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        }
+
+                        Navigator.pop(context);
+                        await _resolveEmergency(alertId);
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ❌ BOTÓN CERRAR
+                  TextButton(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      await _resolveEmergency(alertId);
+                    },
+                    child: const Text(
+                      "Cerrar",
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      });
+    }
+  }, onError: (error) {
+    debugPrint('⚠️ Error escuchando emergencias: $error');
+  });
+}
+
 
   /// =============================================================
   /// Cargar número de notificaciones pendientes
@@ -73,27 +302,24 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
     }
   }
 
-  /// =============================================================
-  /// Abrir pantalla de notificaciones y actualizar contador al volver
-  /// =============================================================
   Future<void> _openNotifications() async {
     await Navigator.pushNamed(context, NotificationsPage.route);
     await _loadNotifCount();
   }
 
   /// =============================================================
-  /// Interfaz principal
+  /// INTERFAZ PRINCIPAL
   /// =============================================================
   @override
   Widget build(BuildContext context) {
     return MediaQuery(
-      data:
-          MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1)),
+      data: MediaQuery.of(context).copyWith(
+        textScaler: const TextScaler.linear(1),
+      ),
       child: Scaffold(
         backgroundColor: Colors.white,
         body: Stack(
           children: [
-            // Contenido principal desplazable
             SafeArea(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 72, 20, 20),
@@ -106,12 +332,11 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                         const UserAvatar(radius: 60),
                         const SizedBox(height: 12),
 
-                        // Nombre dinámico del cuidador
                         StreamBuilder<User?>(
                           stream: FirebaseAuth.instance.userChanges(),
                           builder: (context, authSnap) {
-                            final user =
-                                authSnap.data ?? FirebaseAuth.instance.currentUser;
+                            final user = authSnap.data ??
+                                FirebaseAuth.instance.currentUser;
                             if (user == null) return const SizedBox();
                             final uid = user.uid;
 
@@ -123,16 +348,18 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                                   .snapshots(),
                               builder: (context, docSnap) {
                                 String name = 'Cuidador';
-
                                 if (docSnap.hasData &&
                                     docSnap.data!.data() != null) {
                                   final data = docSnap.data!.data()!;
                                   final first =
-                                      (data['firstName'] as String?)?.trim() ?? '';
+                                      (data['firstName'] as String?)?.trim() ??
+                                          '';
                                   final last =
-                                      (data['lastName'] as String?)?.trim() ?? '';
-                                  final fsName =
-                                      [first, last].where((e) => e.isNotEmpty).join(' ');
+                                      (data['lastName'] as String?)?.trim() ??
+                                          '';
+                                  final fsName = [first, last]
+                                      .where((e) => e.isNotEmpty)
+                                      .join(' ');
                                   if (fsName.isNotEmpty) name = fsName;
                                 }
 
@@ -173,7 +400,6 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                         ),
                         const SizedBox(height: 20),
 
-                        // Opciones principales
                         _PillButton(
                           color: kPurple,
                           icon: Icons.people_outline,
@@ -184,7 +410,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                         _PillButton(
                           color: kPurple,
                           icon: Icons.menu_book_outlined,
-                          text: 'Guías Rápidas',
+                          text: 'Guías',
                           onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -194,7 +420,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                         _PillButton(
                           color: kPurple,
                           icon: Icons.event_note_outlined,
-                          text: 'Calendario de Recuerdos',
+                          text: 'Recuerdos',
                           onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -204,10 +430,12 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                         _PillButton(
                           color: kPurple,
                           icon: Icons.chat_bubble_outline,
-                          text: 'ChatWhoAmI',
-                          onTap: () {
-                            // Implementación futura
-                          },
+                          text: 'Asistente',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const AssistantPage()),
+                          ),
                         ),
 
                         const SizedBox(height: 24),
@@ -218,7 +446,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
               ),
             ),
 
-            // Botón de Ajustes (izquierda)
+            /// ---------- Ajustes (esquina superior izquierda)
             SafeArea(
               child: Align(
                 alignment: Alignment.topLeft,
@@ -236,7 +464,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
               ),
             ),
 
-            // Campanita con badge de notificaciones (derecha)
+            /// ---------- Campana de notificaciones
             SafeArea(
               child: Align(
                 alignment: Alignment.topRight,
@@ -260,8 +488,6 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
 // =============================================================
 // COMPONENTES REUTILIZABLES
 // =============================================================
-
-// Campanita con badge rojo reutilizable
 class _NotificationBell extends StatelessWidget {
   const _NotificationBell({
     required this.count,
@@ -326,7 +552,6 @@ class _NotificationBell extends StatelessWidget {
   }
 }
 
-// Botón con forma de pastilla reutilizable
 class _PillButton extends StatelessWidget {
   const _PillButton({
     required this.color,

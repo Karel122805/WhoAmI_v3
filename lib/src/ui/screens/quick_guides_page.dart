@@ -11,101 +11,131 @@ class QuickGuidesPage extends StatefulWidget {
 }
 
 class _QuickGuidesPageState extends State<QuickGuidesPage> {
-  // Colores de la app
+  // Paleta pastel exacta
+  static const Color yellow = Color(0xFFFFF49F);
+  static const Color pink = Color(0xFFFF9FA1);
   static const Color blue = Color(0xFF9ED3FF);
-  static const Color text = Color(0xFF111111);
+  static const Color green = Color(0xFF9EEE97);
+  static const Color purple = Color(0xFFD99FFF);
 
-  final _tts = FlutterTts();
-  final _rnd = Random();
+  static const Color textColor = Color(0xFF111111);
 
-  // --- Guías para cuidadores de Alzheimer ---
+  final FlutterTts _tts = FlutterTts();
+  final Random _rnd = Random();
+
+  // PRIMERA VISTA: menú de categorías
+  bool _showCategoryMenu = true;
+
   final Map<String, List<String>> _guidesByCategory = {
-    "Emergencias y señales de alerta": [
-      "Si tu paciente se altera, ponle música que le guste para calmarlo.",
-      "Si se desorienta en la calle, mantenlo acompañado y muéstrale objetos familiares.",
-      "En caso de caída, revisa si puede moverse; si hay dolor fuerte, no lo levantes y busca ayuda médica.",
-      "Ten siempre a la mano un kit con medicamentos, identificación y números de emergencia.",
-      "Si notas fiebre, dificultad para respirar o cambios bruscos de conducta, contacta al médico de inmediato.",
+    "Emergencia": [
+      "Mantén la calma y acompaña al paciente en todo momento.",
+      "Si se desorienta, llévalo a un lugar seguro y familiar.",
+      "Verifica signos vitales si hay caída.",
+      "Evita mover al paciente si siente dolor intenso.",
+      "Llama a emergencias si presenta cambios bruscos de conducta.",
+      "Asegura que tenga identificación siempre consigo.",
+      "Busca un lugar tranquilo para evitar sobreestimulación.",
+      "Llama a un familiar si la situación se complica.",
+      "Revisa si tomó sus medicamentos correctamente.",
+      "Mantente atento a signos de deshidratación o fiebre.",
     ],
-    "Rutina diaria": [
-      "Mantén horarios fijos para dormir, comer y bañarse; eso le da seguridad.",
-      "Coloca siempre la ropa en el mismo lugar para que pueda identificarla.",
-      "Divide actividades en pasos simples: ‘primero lávate las manos, luego siéntate’.",
-      "Permite que participe en tareas fáciles como doblar ropa o regar plantas.",
-      "Anticipa lo que van a hacer: avísale con calma lo que viene después.",
+    "Rutina": [
+      "Establece horarios fijos para levantarse y dormir.",
+      "Organiza la ropa un día antes.",
+      "Divide actividades en pasos sencillos.",
+      "Incluye pausas para evitar cansancio.",
+      "Usa recordatorios visuales en casa.",
+      "Mantén rutinas constantes para generar seguridad.",
+      "Evita cambios bruscos de última hora.",
+      "Realiza actividades tranquilas antes de dormir.",
+      "Ordena el entorno para reducir estrés.",
+      "Permite que participe en tareas simples.",
     ],
     "Comunicación": [
-      "Háblale con frases cortas y claras, usando un tono calmado.",
-      "Evita discutir o corregir; en su lugar, cambia de tema suavemente.",
-      "Mantén contacto visual y usa gestos o señas cuando hables.",
-      "Haz preguntas simples de sí o no para que le sea más fácil responder.",
-      "Si no entiende una palabra, muéstrale un objeto o una imagen como apoyo.",
+      "Habla despacio y usa frases cortas.",
+      "Haz contacto visual siempre.",
+      "Haz preguntas simples de sí/no.",
+      "Usa gestos o imágenes como apoyo.",
+      "Evita discusiones o correcciones duras.",
+      "Dale tiempo para responder.",
+      "Evita hablar rápido.",
+      "Refuerza con gestos calmados.",
+      "Escucha sin interrumpir.",
+      "Valida sus emociones cuando esté confundido.",
     ],
-    "Seguridad en el hogar": [
-      "Coloca candados o seguros en puertas que no debe abrir, como cocina o despensa.",
-      "Ilumina bien pasillos y escaleras; la poca luz aumenta la desorientación.",
-      "Retira objetos pequeños o alfombras que puedan provocar caídas.",
-      "Pon etiquetas con dibujos en puertas y cajones: baño, cocina, ropa.",
-      "Guarda objetos peligrosos como cuchillos, cerillos o productos de limpieza.",
+    "Seguridad": [
+      "Retira alfombras que puedan causar caídas.",
+      "Asegura puertas y ventanas.",
+      "Coloca iluminación nocturna.",
+      "Guarda objetos peligrosos fuera de alcance.",
+      "Evita pisos mojados.",
+      "Coloca barandales en lugares clave.",
+      "Mantén productos tóxicos bajo llave.",
+      "Evita cables sueltos.",
+      "Supervisa al usar la cocina.",
+      "Usa calzado seguro y cómodo.",
     ],
-    "Medicamentos": [
-      "Organiza las pastillas en un pastillero semanal y usa alarmas para recordatorios.",
-      "Explícale cada medicina con calma, mostrando el envase o pastillero.",
-      "Apunta en una libreta los horarios de cada medicamento y verifica al final del día.",
-      "Nunca cambies la dosis sin consultar al médico.",
-      "Si notas somnolencia, mareos o malestar después de una medicina, notifícalo al doctor.",
-    ],
-    "Alimentación e hidratación": [
-      "Ofrécele agua constantemente, incluso si dice que no tiene sed.",
-      "Usa platos de colores para que identifique mejor la comida.",
-      "Evita el ruido o la televisión durante las comidas para que se concentre.",
-      "Corta los alimentos en trozos pequeños y fáciles de masticar.",
-      "Si rechaza un plato, ofrece otro alimento que le guste en porciones pequeñas.",
-    ],
-    "Estimulación cognitiva y física": [
-      "Muestra fotos familiares y repitan los nombres en voz alta juntos.",
-      "Realiza caminatas cortas en lugares seguros, de 10 a 15 minutos diarios.",
-      "Pon canciones conocidas y cántenlas juntos para estimular recuerdos.",
-      "Jueguen memoramas, rompecabezas grandes o clasificar objetos por color.",
-      "Practiquen respiraciones profundas por 2 minutos para relajarse.",
-    ],
-    "Autocuidado del cuidador": [
-      "Si te sientes agotado, pide ayuda a un familiar o amigo antes de sobrecargarte.",
-      "Tómate 10 minutos al día para ti: respira, escucha música o haz algo que disfrutes.",
-      "No descuides tus horas de sueño; tu descanso es clave para cuidar mejor.",
-      "Habla con otros cuidadores o busca un grupo de apoyo; compartir experiencias ayuda.",
-      "Pedir ayuda no es debilidad: es parte del cuidado responsable.",
+    "Medicina": [
+      "Usa un pastillero semanal para organizar medicamentos.",
+      "Configura alarmas para recordar horarios.",
+      "No cambies dosis sin consultar al médico.",
+      "Registra efectos secundarios inusuales.",
+      "Verifica que no falte ninguna dosis.",
+      "Guarda medicamentos fuera del alcance.",
+      "Acompáñalo mientras los toma.",
+      "Ten la receta médica a la mano.",
+      "Revisa fechas de caducidad.",
+      "No mezcles medicamentos sin supervisión.",
     ],
   };
 
+  // Colores de categoría
+  late final Map<String, Color> _catColor = {
+    "Emergencia": yellow,
+    "Rutina": pink,
+    "Comunicación": blue,
+    "Seguridad": green,
+    "Medicina": purple,
+  };
+
+  // Íconos representativos
+  late final Map<String, IconData> _catIcon = {
+    "Emergencia": Icons.warning_rounded,
+    "Rutina": Icons.schedule_rounded,
+    "Comunicación": Icons.chat_rounded,
+    "Seguridad": Icons.shield_rounded,
+    "Medicina": Icons.medical_services_rounded,
+  };
+
   late final List<String> _categories;
-  String _selected = "Aleatorias";
-  List<String> _visible = const [];
+
+  String _selected = "Emergencia";
+  List<String> _visible = [];
 
   @override
   void initState() {
     super.initState();
-    _categories = ["Aleatorias", ..._guidesByCategory.keys];
+    _categories = [..._guidesByCategory.keys];
     _configureTts();
-    _pickVisible();
   }
 
   Future<void> _configureTts() async {
     await _tts.setLanguage("es-MX");
     await _tts.setPitch(1.0);
-    await _tts.setSpeechRate(0.5); // más lento para claridad
+    await _tts.setSpeechRate(0.5);
   }
 
-  List<String> _poolFor(String c) =>
-      c == "Aleatorias"
-          ? _guidesByCategory.values.expand((e) => e).toList()
-          : (_guidesByCategory[c] ?? const []);
+  // Cargar categoría
+  void _loadCategory(String cat) async {
+    await _tts.stop();
+    _selected = cat;
 
-  void _pickVisible() {
-    final pool = _poolFor(_selected);
-    final copy = List<String>.from(pool)..shuffle(_rnd);
+    final pool = _guidesByCategory[cat]!;
+    final shuffled = List<String>.from(pool)..shuffle(_rnd);
+
     setState(() {
-      _visible = copy.take(5).toList();
+      _visible = shuffled;
+      _showCategoryMenu = false;
     });
   }
 
@@ -123,108 +153,113 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("Guías rápidas"),
+        title: const Text("Guías"),
         centerTitle: true,
         elevation: 0,
       ),
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 58), // 👈 ajustado
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    "Selecciona una categoría",
-                    style: TextStyle(color: Colors.black54),
-                  ),
-                ),
-                SizedBox(
-                  height: 38,
-                  width: 220,
-                  child: DropdownButtonHideUnderline(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.black12),
+
+      body: _showCategoryMenu
+          ? _buildCategoryMenu()    // ← Vista 1 (categorías)
+          : _buildGuidesView(),     // ← Vista 2 (guías)
+    );
+  }
+
+  // 1️⃣ MENÚ DE CATEGORÍAS
+  Widget _buildCategoryMenu() {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: GridView.count(
+        crossAxisCount: 2,
+        crossAxisSpacing: 14,
+        mainAxisSpacing: 14,
+        children: _categories.map((cat) {
+          return GestureDetector(
+            onTap: () => _loadCategory(cat),
+            child: Container(
+              decoration: BoxDecoration(
+                color: _catColor[cat],
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: const [
+                  BoxShadow(
+                    blurRadius: 6,
+                    offset: Offset(0, 4),
+                    color: Colors.black26,
+                  )
+                ],
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(_catIcon[cat], size: 48, color: textColor),
+                    const SizedBox(height: 10),
+                    Text(
+                      cat,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: textColor,
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: DropdownButton<String>(
-                          isExpanded: true,
-                          value: _selected,
-                          items: _categories
-                              .map((c) => DropdownMenuItem(
-                                    value: c,
-                                    child: Text(
-                                      c == "Aleatorias"
-                                          ? "— Mostrar aleatorias —"
-                                          : c,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ))
-                              .toList(),
-                          onChanged: (v) {
-                            if (v == null) return;
-                            setState(() => _selected = v);
-                            _pickVisible();
-                          },
-                        ),
-                      ),
+                      textAlign: TextAlign.center,
                     ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Lista de guías
-            Expanded(
-              child: ListView.builder(
-                itemCount: _visible.length,
-                itemBuilder: (_, i) {
-                  final guide = _visible[i];
-                  return _GuideCard(
-                    text: guide,
-                    onTap: () => _speak(guide),
-                  );
-                },
-              ),
-            ),
-
-            // Botón que resetea a Aleatorias siempre
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _selected = "Aleatorias"; // 👈 forzar a aleatorias
-                  });
-                  _pickVisible();
-                },
-                icon: const Icon(Icons.refresh),
-                label: Text(
-                  _selected == "Aleatorias"
-                      ? "Mostrar otras guías"
-                      : "Ver guías aleatorias",
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: blue,
-                  foregroundColor: text,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(height: 10),
-          ],
-        ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // 2️⃣ VISTA DE GUÍAS (SIN DROPDOWN)
+  Widget _buildGuidesView() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 70),
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+
+          // LISTA DE GUÍAS
+          Expanded(
+            child: ListView.builder(
+              itemCount: _visible.length,
+              itemBuilder: (_, i) {
+                return _GuideCard(
+                  text: _visible[i],
+                  color: _catColor[_selected]!,
+                  icon: _catIcon[_selected]!,
+                  onTap: () => _speak(_visible[i]),
+                );
+              },
+            ),
+          ),
+
+          // BOTÓN NUEVO — MUY VISIBLE
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => setState(() => _showCategoryMenu = true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE9D8FF), // violeta pastel claro
+                foregroundColor: const Color(0xFF6B2FAF), // texto morado
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                elevation: 4,
+              ),
+              child: const Text(
+                "Volver al menú",
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -233,7 +268,15 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
 class _GuideCard extends StatelessWidget {
   final String text;
   final VoidCallback onTap;
-  const _GuideCard({required this.text, required this.onTap});
+  final Color color;
+  final IconData icon;
+
+  const _GuideCard({
+    required this.text,
+    required this.onTap,
+    required this.color,
+    required this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -244,32 +287,31 @@ class _GuideCard extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 8),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
+          color: color,
           borderRadius: BorderRadius.circular(14),
-          gradient: const LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [Color(0xFF9ED3FF), Color(0xFFE9F6FF)],
-          ),
           boxShadow: const [
             BoxShadow(
               blurRadius: 6,
               offset: Offset(0, 2),
               color: Color(0x22000000),
-            ),
+            )
           ],
         ),
         child: Row(
           children: [
-            const Icon(Icons.health_and_safety, size: 22),
-            const SizedBox(width: 10),
+            Icon(icon, size: 22, color: Colors.black),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 text,
-                style: const TextStyle(fontSize: 15.5),
+                style: const TextStyle(
+                  fontSize: 15.5,
+                  color: Colors.black,
+                  height: 1.3,
+                ),
               ),
             ),
-            const SizedBox(width: 4),
-            const Icon(Icons.volume_up, size: 20),
+            const Icon(Icons.volume_up, size: 22, color: Colors.black),
           ],
         ),
       ),

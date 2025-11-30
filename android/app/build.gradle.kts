@@ -1,48 +1,43 @@
 plugins {
     id("com.android.application")
-    // START: FlutterFire Configuration
-    id("com.google.gms.google-services")
-    // END: FlutterFire Configuration
     id("kotlin-android")
-    // El plugin de Flutter debe ir después de Android y Kotlin
+    // Flutter plugin debe ir después de Android y Kotlin
     id("dev.flutter.flutter-gradle-plugin")
+    // FlutterFire / Google Services
+    id("com.google.gms.google-services")
 }
 
 android {
     namespace = "com.example.whoami_app"
-    compileSdk = flutter.compileSdkVersion
+
+    // ✅ Actualiza a SDK 36 (requerido por tus plugins)
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
+    // ✅ Compatibilidad con Java 17 y desugaring
     compileOptions {
-        // Compatibilidad con Java 11 y soporte para desugaring
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
         isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        jvmTarget = "17"
     }
 
     defaultConfig {
         applicationId = "com.example.whoami_app"
-
-        // Requerido por flutter_inappwebview y WebView moderno
-        minSdk = 24
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 24            // Flutter requiere mínimo 21, pero tus plugins usan >=24
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
-    // 🔧 Configuración de los tipos de compilación
+    // 🔧 Configura build types
     buildTypes {
-        // --- MODO RELEASE ---
         getByName("release") {
-            // Firma temporal (usa la de debug para pruebas)
             signingConfig = signingConfigs.getByName("debug")
-
-            // ✅ Habilita ProGuard/R8 con reglas personalizadas
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -50,9 +45,7 @@ android {
             )
         }
 
-        // --- MODO DEBUG ---
         getByName("debug") {
-            // Desactiva el shrinker para evitar errores en desarrollo
             isMinifyEnabled = false
             isShrinkResources = false
         }
@@ -64,9 +57,12 @@ flutter {
 }
 
 dependencies {
-    // Soporte biométrico
+    // ✅ Desugaring moderno (requerido por flutter_local_notifications)
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
+    // ✅ Soporte biométrico (para local_auth)
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
 
-    // Desugaring requerido por flutter_local_notifications
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    // ✅ WorkManager (para futuras tareas en background)
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 }
