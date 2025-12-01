@@ -5,7 +5,7 @@ import 'game_page.dart';
 
 class BrainSaysPage extends StatefulWidget {
   const BrainSaysPage({super.key});
-  static const route = '/games/brain_says';
+  static const route = '/brain_says_page.dart';
 
   @override
   State<BrainSaysPage> createState() => _BrainSaysPageState();
@@ -28,70 +28,66 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
   final Color kText = const Color(0xFF111111);
 
   @override
-void initState() {
-  super.initState();
-  // Mostrar la ventana emergente antes de iniciar el juego
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    _showStartDialog();
-  });
-}
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showStartDialog();
+    });
+  }
 
-Future<void> _showStartDialog() async {
-  await showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      backgroundColor: Colors.white,
-      title: const Text(
-        '¿Listo para comenzar?',
-        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
-        textAlign: TextAlign.center,
-      ),
-      content: const Text(
-        'Prepárate para poner a prueba tu memoria.',
-        style: TextStyle(color: Colors.black87, fontSize: 15),
-        textAlign: TextAlign.center,
-      ),
-      actionsAlignment: MainAxisAlignment.center,
-      actions: [
-        TextButton(
-          style: TextButton.styleFrom(
-            backgroundColor: const Color(0xFFFFB3B3), // Rojo suave
-            foregroundColor: Colors.black,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-          ),
-          onPressed: () {
-            Navigator.pop(context);
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const GamesPage()),
-            );
-          },
-          child: const Text('Salir al menú', style: TextStyle(fontSize: 14)),
+  Future<void> _showStartDialog() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: Colors.white,
+        title: const Text(
+          '¿Listo para comenzar?',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
+          textAlign: TextAlign.center,
         ),
-        TextButton(
-          style: TextButton.styleFrom(
-            backgroundColor: const Color(0xFF9ED3FF), // Azul suave
-            foregroundColor: Colors.black,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-          ),
-          onPressed: () {
-            Navigator.pop(context);
-            _startGame();
-          },
-          child: const Text('Iniciar juego', style: TextStyle(fontSize: 14)),
+        content: const Text(
+          'Prepárate para poner a prueba tu memoria.',
+          style: TextStyle(color: Colors.black87, fontSize: 15),
+          textAlign: TextAlign.center,
         ),
-      ],
-    ),
-  );
-}
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            style: TextButton.styleFrom(
+              backgroundColor: const Color(0xFFFFB3B3),
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+            ),
+            onPressed: () {
+              Navigator.pop(context);        // Cierra el diálogo
+              Navigator.pop(context);        // 🔥 Sale del juego → vuelve a GamesPage
+            },
+            child: const Text('Salir al menú', style: TextStyle(fontSize: 14)),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              backgroundColor: Color(0xFF9ED3FF),
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+            ),
+            onPressed: () {
+              Navigator.pop(context);
+              _startGame();
+            },
+            child: const Text('Iniciar juego', style: TextStyle(fontSize: 14)),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _startGame() {
     pattern.clear();
@@ -183,11 +179,8 @@ Future<void> _showStartDialog() async {
             _startGame();
           },
           onMenu: () {
-            Navigator.pop(context);
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const GamesPage()),
-            );
+            Navigator.pop(context);   // Cierra el dialogo
+            Navigator.pop(context);   // 🔥 Sale hacia GamesPage
           },
           modalButtonColor: kPurple,
         );
@@ -328,17 +321,14 @@ Future<void> _showStartDialog() async {
     return WillPopScope(
       onWillPop: () async {
         if (await _onWillPop()) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const GamesPage()),
-          );
+          Navigator.pop(context);  // 🔥 Regresa al menú de juegos
         }
         return false;
       },
       child: Scaffold(
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('Brain Says',
+          title: const Text('Colores',
               style: TextStyle(fontWeight: FontWeight.bold)),
           backgroundColor: Colors.white,
           foregroundColor: Colors.black,
@@ -347,14 +337,12 @@ Future<void> _showStartDialog() async {
             icon: const Icon(Icons.arrow_back),
             onPressed: () async {
               if (await _onWillPop()) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => const GamesPage()),
-                );
+                Navigator.pop(context); // 🔥 Vuelve sin loop
               }
             },
           ),
         ),
+
         body: Center(
           child: SingleChildScrollView(
             child: Column(
@@ -426,7 +414,6 @@ Future<void> _showStartDialog() async {
                   ),
                 ),
                 const SizedBox(height: 25),
-                // === BOTONES CON ICONOS NEGROS ===
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [

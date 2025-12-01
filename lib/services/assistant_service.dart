@@ -1,275 +1,321 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import '../../../services/assistant_service.dart';
-import '../theme.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:intl/intl.dart';
 
-class AssistantPage extends StatefulWidget {
-  const AssistantPage({super.key});
-  static const route = '/assistant';
+class AssistantService {
+  final _auth = FirebaseAuth.instance;
+  final _firestore = FirebaseFirestore.instance;
+  final _storage = FirebaseStorage.instance;
 
-  @override
-  State<AssistantPage> createState() => _AssistantPageState();
-}
+  final _gemini = GenerativeModel(
+    model: 'gemini-2.0-flash',
+    apiKey: 'AIzaSyDqXK7eVedTcy8brlvRwawwgNDAjGwY1qA',
+  );
 
-class _AssistantPageState extends State<AssistantPage> {
-  final _assistant = AssistantService();
-  final _controller = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
+  /// 🧠 Chat principal del asistente
+  Future<String> chat({String? text, File? image}) async {
+    final user = _auth.currentUser;
+    if (user == null) return 'Debes iniciar sesión primero.';
+    final uid = user.uid;
 
-  File? _image;
-  bool _loading = false;
+    // === Datos del usuario ===
+    final userDoc = await _firestore.collection('users').doc(uid).get();
+    final userData = userDoc.data() ?? {};
 
-  final List<Map<String, dynamic>> _messages = [
-    {
-      'from': 'assistant',
-      'text':
-          '¡Hola! Soy tu asistente personal 🧠💜\nSube una foto de lo que hiciste hoy o cuéntame cómo te sientes.'
+    final firstName = userData['firstName'] ?? '';
+    final lastName = userData['lastName'] ?? '';
+    final role = (userData['role'] ?? '').toLowerCase();
+    final caregiverId = userData['caregiverId'];
+    final displayName = "$firstName $lastName".trim();
+    final lower = (text ?? '').toLowerCase().trim();
+
+    // === Contexto anterior (memoria a corto plazo) ===
+    final lastContext = await _obtenerUltimoContexto(uid);
+    String contextoPrevio = '';
+    if (lastContext != null) {
+      contextoPrevio =
+          "La última vez me dijiste: '${lastContext['mensaje']}'. Yo respondí: '${lastContext['respuesta']}'.";
     }
-  ];
 
-  Future<void> _send() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty && _image == null) return;
+    // === Identidad e información personal ===
+    if (lower.contains('como me llamo') || lower.contains('quien soy')) {
+      final respuesta = "Te llamas $displayName 💜 y eres una persona muy importante. "
+          "Nunca olvides que tu historia y tus recuerdos te definen.";
+      await _guardarMensaje(uid, text, respuesta);
+      return respuesta;
+    }
 
-    final imageToSend = _image;
+    // === Consultante pregunta quién es su cuidador ===
+    if (lower.contains('quien es mi cuidador')) {
+      if (caregiverId != null && caregiverId.isNotEmpty) {
+        final caregiverDoc =
+            await _firestore.collection('users').doc(caregiverId).get();
+        final data = caregiverDoc.data();
+        if (data != null) {
+          final name =
+              "${data['firstName'] ?? ''} ${data['lastName'] ?? ''}".trim();
+          final photo = data['photoURL'] ?? '';
+          final respuesta =
+              "Tu cuidador es $name 💜, quien te acompaña y te cuida con cariño cada día.";
+          await _guardarMensaje(uid, text, respuesta, imageUrl: photo);
+          return respuesta;
+        }
+      }
+      const respuesta =
+          "Parece que aún no tienes un cuidador asignado 🕯️. "
+          "Puedes vincularte con uno desde tu perfil.";
+      await _guardarMensaje(uid, text, respuesta);
+      return respuesta;
+    }
 
-    setState(() {
-      _loading = true;
-      _messages.add({'from': 'user', 'text': text, 'image': imageToSend});
-      _controller.clear();
-      _image = null;
-    });
+    // === Cuidador pregunta quién es su consultante/paciente ===
+    if (lower.contains('quien es mi consultante') ||
+        lower.contains('quien es mi paciente')) {
+      final pacientesSnap = await _firestore
+          .collection('caregivers')
+          .doc(uid)
+          .collection('patients')
+          .get();
 
-    await Future.delayed(const Duration(milliseconds: 200));
-    _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent + 100,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-    );
+      if (pacientesSnap.docs.isNotEmpty) {
+        final nombres = <String>[];
+        for (final doc in pacientesSnap.docs) {
+          final patientDoc = await _firestore
+              .collection('users')
+              .doc(doc.id)
+              .get();
+          if (patientDoc.exists) {
+            final data = patientDoc.data()!;
+            final name =
+                "${data['firstName'] ?? ''} ${data['lastName'] ?? ''}".trim();
+            nombres.add(name);
+          }
+        }
+        if (nombres.isNotEmpty) {
+          final respuesta = nombres.length == 1
+              ? "Tu consultante es ${nombres.first} 💜."
+              : "Tienes ${nombres.length} consultantes: ${nombres.join(', ')} 💜.";
+          await _guardarMensaje(uid, text, respuesta);
+          return respuesta;
+        }
+      }
+      const respuesta = "No tienes consultantes registrados actualmente 🕯️.";
+      await _guardarMensaje(uid, text, respuesta);
+      return respuesta;
+    }
+
+    // === Emoción detectada y almacenada ===
+    final emocion = _detectarEmocionTexto(lower);
+    if (emocion != null) {
+      await _guardarEstadoEmocional(uid, emocion, text ?? '');
+      final resumen = await _resumenEmocional(uid, emocion);
+      await _guardarMensaje(uid, text, resumen);
+      return resumen;
+    }
+
+    // === Buscar recuerdos por fecha ===
+    final fechaBuscada = _extraerFechaFlexible(text ?? '');
+    if (fechaBuscada != null) {
+      final recuerdos = await _buscarRecuerdosPorFecha(uid, fechaBuscada);
+      if (recuerdos.isNotEmpty) {
+        final buffer = StringBuffer();
+        for (final r in recuerdos) {
+          final dateField = r['date'];
+          DateTime? fecha;
+          if (dateField is Timestamp) fecha = dateField.toDate();
+          if (dateField is String) {
+            try {
+              fecha = DateTime.parse(dateField);
+            } catch (_) {}
+          }
+
+          final descripcion =
+              r['text'] ?? r['descripcion'] ?? '(sin descripción)';
+          final url = r['imageUrl'] ?? '';
+          buffer.writeln(
+              "📅 ${fecha != null ? _formatearFecha(fecha) : 'Sin fecha registrada'}");
+          buffer.writeln("📝 Descripción: $descripcion");
+          if (url.isNotEmpty) buffer.writeln("[imagen]$url[/imagen]");
+          buffer.writeln("────────────────────");
+        }
+
+        final respuesta =
+            "✨ He encontrado ${recuerdos.length} recuerdo(s) de esa fecha:\n\n${buffer.toString()}";
+        await _guardarMensaje(uid, text, respuesta);
+        return respuesta;
+      } else {
+        const respuesta =
+            "No encontré ningún recuerdo guardado para esa fecha 🕯️. ¿Deseas subir una foto o contarme qué pasó ese día?";
+        await _guardarMensaje(uid, text, respuesta);
+        return respuesta;
+      }
+    }
+
+    // === Subir imagen si existe ===
+    String? imageUrl;
+    if (image != null) {
+      final ref = _storage
+          .ref('memories/$uid/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await ref.putFile(image, SettableMetadata(contentType: 'image/jpeg'));
+      imageUrl = await ref.getDownloadURL();
+
+      await _firestore
+          .collection('memories')
+          .doc(uid)
+          .collection('user_memories')
+          .add({
+        'text': text ?? '',
+        'imageUrl': imageUrl,
+        'date': DateTime.now().toIso8601String(),
+        'frequency': 'monthly',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+
+    // === Prompt principal con contexto y memoria emocional ===
+    final moodHistory = await _obtenerHistorialEmocional(uid);
+    final resumenEmociones = moodHistory.isEmpty
+        ? ''
+        : 'Últimamente el usuario ha tenido los siguientes estados emocionales: ${moodHistory.join(', ')}.';
+
+    final systemPrompt = '''
+Eres el asistente personal de $displayName.
+Tu función es acompañar emocionalmente, ayudar a recordar momentos importantes y seguir el estado de ánimo del usuario.
+
+$contextoPrevio
+$resumenEmociones
+
+Habla con calidez, empatía y naturalidad.
+Nunca menciones que eres una IA ni uses lenguaje técnico.
+Solo puedes hablar sobre Alzheimer, emociones, memoria y bienestar.
+''';
+
+    final parts = <Part>[
+      TextPart(systemPrompt),
+      if (image != null) DataPart('image/jpeg', await image.readAsBytes()),
+      if (text != null && text.isNotEmpty) TextPart(text),
+    ];
 
     try {
-      final reply = await _assistant.chat(text: text, image: imageToSend);
-      if (!mounted) return;
-      setState(() {
-        _messages.add({'from': 'assistant', 'text': reply});
-      });
+      final response = await _gemini.generateContent([Content.multi(parts)]);
+      final reply = response.text?.trim() ?? 'No tengo información sobre eso.';
+      await _guardarMensaje(uid, text, reply);
+      return reply;
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _messages.add({
-          'from': 'assistant',
-          'text': '⚠️ Ocurrió un error inesperado.\n\n$e'
-        });
-      });
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      print('⚠️ Error al conectar con Gemini: $e');
+      return '⚠️ Error al conectar con Gemini:\n$e';
     }
   }
 
-  Future<void> _pickImage() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (picked != null && mounted) {
-      setState(() => _image = File(picked.path));
+  // ===============================================================
+  // 🔍 FUNCIONES AUXILIARES
+  // ===============================================================
+
+  Future<Map<String, dynamic>?> _obtenerUltimoContexto(String uid) async {
+    final snap = await _firestore
+        .collection('assistant')
+        .doc(uid)
+        .collection('messages')
+        .orderBy('fecha', descending: true)
+        .limit(1)
+        .get();
+    if (snap.docs.isEmpty) return null;
+    return snap.docs.first.data();
+  }
+
+  /// Detectar emoción base
+  String? _detectarEmocionTexto(String texto) {
+    if (texto.contains('feliz') || texto.contains('alegre')) return 'feliz';
+    if (texto.contains('triste')) return 'triste';
+    if (texto.contains('ansioso') || texto.contains('nervioso')) return 'ansioso';
+    if (texto.contains('enojado') || texto.contains('molesto')) return 'enojado';
+    if (texto.contains('cansado') || texto.contains('agotado')) return 'cansado';
+    if (texto.contains('solo') || texto.contains('sola')) return 'solo';
+    return null;
+  }
+
+  /// Guardar estado emocional diario
+  Future<void> _guardarEstadoEmocional(
+      String uid, String emocion, String mensaje) async {
+    final fecha = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    await _firestore
+        .collection('assistant')
+        .doc(uid)
+        .collection('mood_history')
+        .doc(fecha)
+        .set({
+      'mood': emocion,
+      'message': mensaje,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Generar respuesta empática en base al historial
+  Future<String> _resumenEmocional(String uid, String emocion) async {
+    final moods = await _obtenerHistorialEmocional(uid);
+    String respuesta = '';
+
+    if (emocion == 'feliz') {
+      respuesta =
+          "¡Qué gusto saber que te sientes feliz hoy! 💜 ${moods.contains('triste') ? 'Me alegra ver que tu ánimo ha mejorado desde la última vez.' : 'Sigue disfrutando de ese momento tan bonito.'}";
+    } else if (emocion == 'triste') {
+      respuesta =
+          "Lamento que te sientas triste 😔. Estoy aquí contigo, cuéntame qué te preocupa.";
+    } else if (emocion == 'ansioso') {
+      respuesta =
+          "Parece que estás algo ansioso 🌿. ¿Quieres que hagamos juntos un pequeño ejercicio para relajarte?";
+    } else if (emocion == 'enojado') {
+      respuesta =
+          "Siento que estés molesto 😞. Es normal sentir enojo a veces. Estoy aquí para escucharte sin juzgar.";
+    } else if (emocion == 'cansado') {
+      respuesta =
+          "Parece que tuviste un día pesado 💫. Te recomiendo descansar un poco y cuidar de ti.";
+    } else if (emocion == 'solo') {
+      respuesta =
+          "No estás solo 💜. Estoy aquí contigo, siempre dispuesto a escucharte.";
     }
+
+    return respuesta;
   }
 
-  String? _extraerUrlDeEtiqueta(String text) {
-    final regex = RegExp(r'\[imagen\](https[^\[]+)\[\/imagen\]');
-    final match = regex.firstMatch(text);
-    return match?.group(1);
+  /// Recuperar últimos 7 estados emocionales
+  Future<List<String>> _obtenerHistorialEmocional(String uid) async {
+    final snap = await _firestore
+        .collection('assistant')
+        .doc(uid)
+        .collection('mood_history')
+        .orderBy('timestamp', descending: true)
+        .limit(7)
+        .get();
+    return snap.docs.map((d) => d['mood'] as String).toList();
   }
 
-  Widget _buildMessageBubble(String text, bool isUser, File? image) {
-    final imageUrl = _extraerUrlDeEtiqueta(text);
-    final cleanText =
-        text.replaceAll(RegExp(r'\[imagen\].*?\[\/imagen\]', dotAll: true), '').trim();
-
-    final bubbleColor = isUser ? kPurple : kBlue;
-
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        padding: const EdgeInsets.all(14),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
-        decoration: BoxDecoration(
-          color: bubbleColor,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: isUser ? const Radius.circular(18) : Radius.zero,
-            bottomRight: isUser ? Radius.zero : const Radius.circular(18),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.07),
-              offset: const Offset(2, 2),
-              blurRadius: 4,
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment:
-              isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            if (image != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.file(image, height: 150, fit: BoxFit.cover),
-                ),
-              ),
-
-            if (imageUrl != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    imageUrl,
-                    height: 170,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
-
-            if (cleanText.isNotEmpty)
-              Text(
-                cleanText,
-                style: const TextStyle(
-                  color: kInk,
-                  fontSize: 16,
-                  height: 1.25,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
+  /// Guardar mensajes en historial
+  Future<void> _guardarMensaje(String uid, String? mensaje, String respuesta,
+      {String? imageUrl}) async {
+    await _firestore
+        .collection('assistant')
+        .doc(uid)
+        .collection('messages')
+        .add({
+      'mensaje': mensaje ?? '[foto]',
+      'respuesta': respuesta,
+      'imageUrl': imageUrl,
+      'fecha': FieldValue.serverTimestamp(),
+    });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF9F9F9),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: kInk),
-        title: const Text(
-          'Asistente',
-          style: TextStyle(
-            color: kInk,
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        centerTitle: true,
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(16),
-                physics: const BouncingScrollPhysics(),
-                itemCount: _messages.length,
-                itemBuilder: (context, i) {
-                  final msg = _messages[i];
-                  return _buildMessageBubble(
-                    msg['text'] ?? '',
-                    msg['from'] == 'user',
-                    msg['image'],
-                  );
-                },
-              ),
-            ),
+  /// Buscar recuerdos por fecha
+  Future<List<Map<String, dynamic>>> _buscarRecuerdosPorFecha(
+      String uid, DateTime fecha) async {
+    final inicio = DateTime(fecha.year, fecha.month, fecha.day);
+    final fin = inicio.add(const Duration(days: 1));
 
-            if (_image != null)
-              Container(
-                padding: const EdgeInsets.all(8),
-                color: kPurple.withOpacity(0.12),
-                child: Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.file(_image!, height: 60, width: 60, fit: BoxFit.cover),
-                    ),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text(
-                        "Imagen lista para enviar 📸",
-                        style: TextStyle(color: kInk, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: kInk),
-                      onPressed: () => setState(() => _image = null),
-                    ),
-                  ],
-                ),
-              ),
-
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: const BoxDecoration(color: Colors.white),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.photo, color: kPurple),
-                    onPressed: _pickImage,
-                  ),
-
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      decoration: InputDecoration(
-                        hintText: 'Escribe algo...',
-                        filled: true,
-                        fillColor: const Color(0xFFF4F4F4),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 18, vertical: 12),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(30),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      onSubmitted: (_) => _send(),
-                    ),
-                  ),
-
-                  const SizedBox(width: 8),
-
-                  Container(
-                    height: 48,
-                    width: 48,
-                    decoration: const BoxDecoration(
-                      color: kPurple,
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      icon: _loading
-                          ? const CircularProgressIndicator(color: kInk, strokeWidth: 2)
-                          : const Icon(Icons.send, color: kInk),
-                      onPressed: _loading ? null : _send,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            .collection('memories')
+    final query = await _firestore
+        .collection('memories')
         .doc(uid)
         .collection('user_memories')
         .where('date', isGreaterThanOrEqualTo: inicio.toIso8601String())
