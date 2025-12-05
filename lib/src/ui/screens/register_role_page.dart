@@ -209,7 +209,7 @@ class _RegisterRolePageState extends State<RegisterRolePage> {
       await showDialog(
         context: context,
         builder: (ctx) {
-          bool _resending = false;
+          bool resending = false;
           return StatefulBuilder(
             builder: (ctx, setDlg) => AlertDialog(
               shape: RoundedRectangleBorder(
@@ -232,10 +232,10 @@ class _RegisterRolePageState extends State<RegisterRolePage> {
               ),
               actions: [
                 TextButton(
-                  onPressed: _resending
+                  onPressed: resending
                       ? null
                       : () async {
-                          setDlg(() => _resending = true);
+                          setDlg(() => resending = true);
                           try {
                             await cred.user!.sendEmailVerification();
                             if (context.mounted) {
@@ -254,10 +254,10 @@ class _RegisterRolePageState extends State<RegisterRolePage> {
                               );
                             }
                           } finally {
-                            if (ctx.mounted) setDlg(() => _resending = false);
+                            if (ctx.mounted) setDlg(() => resending = false);
                           }
                         },
-                  child: _resending
+                  child: resending
                       ? const SizedBox(
                           width: 18,
                           height: 18,

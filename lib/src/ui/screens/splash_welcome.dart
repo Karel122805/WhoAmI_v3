@@ -45,7 +45,7 @@ class _SplashWelcomeState extends State<SplashWelcome> {
                     const Text('BIENVENIDO A', style: welcomeKicker),
                     const SizedBox(height: 8),
                     const Text(
-                      'who am i?',
+                      'WhoAmI?',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 36,

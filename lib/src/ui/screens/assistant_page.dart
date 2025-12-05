@@ -21,6 +21,9 @@ class _AssistantPageState extends State<AssistantPage> {
   File? _image;
   bool _loading = false;
 
+  // ⭐ NUEVO: Estado para "Escribiendo..."
+  bool _typing = false;
+
   final List<Map<String, dynamic>> _messages = [
     {
       'from': 'assistant',
@@ -29,42 +32,62 @@ class _AssistantPageState extends State<AssistantPage> {
     }
   ];
 
+  // ⭐ FUNCION UNIVERSAL PARA BAJAR EL SCROLL AUTOMATICAMENTE
+  Future<void> _scrollToBottom() async {
+    await Future.delayed(const Duration(milliseconds: 120));
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent + 200,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty && _image == null) return;
 
     final imageToSend = _image;
 
+    // --- Usuario envía mensaje ---
     setState(() {
       _loading = true;
+      _typing = true; // ⭐ MUESTRA "ESCRIBIENDO..."
       _messages.add({'from': 'user', 'text': text, 'image': imageToSend});
       _controller.clear();
       _image = null;
     });
 
-    await Future.delayed(const Duration(milliseconds: 200));
-    _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent + 100,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-    );
+    await _scrollToBottom(); // 🔥 AUTO-SCROLL CUANDO TU ESCRIBES
 
     try {
       final reply = await _assistant.chat(text: text, image: imageToSend);
       if (!mounted) return;
+
       setState(() {
         _messages.add({'from': 'assistant', 'text': reply});
       });
+
+      await _scrollToBottom(); // 🔥 AUTO-SCROLL CUANDO RESPONDE
     } catch (e) {
       if (!mounted) return;
+
       setState(() {
         _messages.add({
           'from': 'assistant',
           'text': '⚠️ Ocurrió un error inesperado.\n\n$e'
         });
       });
+
+      await _scrollToBottom(); // 🔥 TAMBIÉN SI HAY ERROR
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _typing = false; // ⭐ OCULTA "ESCRIBIENDO..."
+        });
+      }
     }
   }
 
@@ -208,10 +231,54 @@ class _AssistantPageState extends State<AssistantPage> {
     );
   }
 
+  // ⭐⭐ BURBUJA "ESCRIBIENDO…" ⭐⭐
+  Widget _buildTypingIndicator() {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 12, top: 4),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: Colors.white,
+            backgroundImage: const AssetImage('assets/assistant.png'),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: kBlue,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+                bottomRight: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+              children: const [
+                Text(
+                  "Escribiendo",
+                  style: TextStyle(color: kInk, fontSize: 15),
+                ),
+                SizedBox(width: 6),
+                SizedBox(
+                  width: 22,
+                  child: LinearProgressIndicator(
+                    backgroundColor: Colors.transparent,
+                    valueColor: AlwaysStoppedAnimation<Color>(kInk),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white, // 💛 USA TU PALETA
+      backgroundColor: Colors.white,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.white,
@@ -229,18 +296,20 @@ class _AssistantPageState extends State<AssistantPage> {
         child: Column(
           children: [
             Expanded(
-              child: ListView.builder(
+              child: ListView(
                 controller: _scrollController,
                 padding: const EdgeInsets.all(16),
                 physics: const BouncingScrollPhysics(),
-                itemCount: _messages.length,
-                itemBuilder: (context, index) {
-                  final msg = _messages[index];
-                  final isUser = msg['from'] == 'user';
-                  final text = msg['text'] ?? '';
-                  final image = msg['image'] as File?;
-                  return _buildMessageBubble(text, isUser, image);
-                },
+                children: [
+                  for (var msg in _messages)
+                    _buildMessageBubble(
+                      msg['text'],
+                      msg['from'] == 'user',
+                      msg['image'],
+                    ),
+
+                  if (_typing) _buildTypingIndicator(), // ⭐ AQUI SE AGREGA
+                ],
               ),
             ),
 
@@ -275,6 +344,7 @@ class _AssistantPageState extends State<AssistantPage> {
                 ),
               ),
 
+            // ⭐ INPUT BAR
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(

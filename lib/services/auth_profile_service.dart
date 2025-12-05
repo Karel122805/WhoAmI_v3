@@ -61,21 +61,21 @@ class AuthProfileService {
     final snap = await ref.get();
     final current = snap.data() ?? <String, dynamic>{};
 
-    final _first = (firstName ?? current['firstName'] ?? '').toString().trim();
-    final _last  = (lastName  ?? current['lastName']  ?? '').toString().trim();
-    final _display = (current['displayName'] ??
-            '${_first.isNotEmpty ? _first : ''} ${_last.isNotEmpty ? _last : ''}')
+    final first = (firstName ?? current['firstName'] ?? '').toString().trim();
+    final last  = (lastName  ?? current['lastName']  ?? '').toString().trim();
+    final display = (current['displayName'] ??
+            '${first.isNotEmpty ? first : ''} ${last.isNotEmpty ? last : ''}')
         .toString()
         .trim();
 
     final data = <String, dynamic>{
       if (email != null) 'email': email,
-      'firstName': _first,
-      'lastName': _last,
-      'displayName': _display.isNotEmpty ? _display : (_first.isNotEmpty || _last.isNotEmpty ? '$_first $_last'.trim() : (email ?? '')),
-      'displayNameLower': (_display.isNotEmpty
-              ? _display
-              : (_first.isNotEmpty || _last.isNotEmpty ? '$_first $_last' : (email ?? '')))
+      'firstName': first,
+      'lastName': last,
+      'displayName': display.isNotEmpty ? display : (first.isNotEmpty || last.isNotEmpty ? '$first $last'.trim() : (email ?? '')),
+      'displayNameLower': (display.isNotEmpty
+              ? display
+              : (first.isNotEmpty || last.isNotEmpty ? '$first $last' : (email ?? '')))
           .toLowerCase()
           .trim(),
       if (role != null) 'role': role, // "Cuidador" o "Consultante"
@@ -102,17 +102,17 @@ class AuthProfileService {
     final ref = _db.collection('users').doc(uid);
     final snap = await ref.get();
     final cur = snap.data() ?? {};
-    final _first = (firstName ?? cur['firstName'] ?? '').toString().trim();
-    final _last  = (lastName  ?? cur['lastName']  ?? '').toString().trim();
-    String _disp  = (displayName ?? cur['displayName'] ?? '').toString().trim();
-    if (_disp.isEmpty) {
-      _disp = '$_first $_last'.trim();
+    final first = (firstName ?? cur['firstName'] ?? '').toString().trim();
+    final last  = (lastName  ?? cur['lastName']  ?? '').toString().trim();
+    String disp  = (displayName ?? cur['displayName'] ?? '').toString().trim();
+    if (disp.isEmpty) {
+      disp = '$first $last'.trim();
     }
     final data = <String, dynamic>{
-      if (firstName != null) 'firstName': _first,
-      if (lastName  != null) 'lastName': _last,
-      'displayName': _disp,
-      'displayNameLower': _disp.toLowerCase(),
+      if (firstName != null) 'firstName': first,
+      if (lastName  != null) 'lastName': last,
+      'displayName': disp,
+      'displayNameLower': disp.toLowerCase(),
       if (birthday != null) 'birthday': Timestamp.fromDate(birthday),
       if (photoUrl  != null) 'photoUrl': photoUrl,
       'updatedAt': FieldValue.serverTimestamp(),

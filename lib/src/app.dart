@@ -52,7 +52,7 @@ class WhoAmIApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Who Am I?',
+      title: 'WhoAmI?',
       theme: appTheme,
 
       // Configuración de idioma y localización

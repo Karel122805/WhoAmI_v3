@@ -25,14 +25,15 @@ class _CalendarPageState extends State<CalendarPage> {
   DateTime? _selectedDay;
   Map<String, dynamic>? _selectedMemory;
   final Set<String> _memoryDayIds = <String>{};
-
   final TextEditingController _searchCtrl = TextEditingController();
+
   MemoryCadence _cadence = MemoryCadence.monthly;
   TimeOfDay _selectedTime = const TimeOfDay(hour: 9, minute: 0);
 
   DateTime _onlyDate(DateTime d) => DateTime(d.year, d.month, d.day);
   String _dateId(DateTime d) =>
       "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
+
   bool _isFutureDay(DateTime day) =>
       _onlyDate(day).isAfter(_onlyDate(DateTime.now()));
 
@@ -40,9 +41,11 @@ class _CalendarPageState extends State<CalendarPage> {
   void initState() {
     super.initState();
     initializeDateFormatting('es_ES');
+
     final today = _onlyDate(DateTime.now());
     _focusedDay = today;
     _selectedDay = today;
+
     _loadMemory(today);
     _loadMonthMemories(today);
   }
@@ -88,6 +91,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
   Future<bool> _confirmDialog(String title, String message) async {
     const Color softRed = Color(0xFFFF8A8A);
+
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -112,8 +116,8 @@ class _CalendarPageState extends State<CalendarPage> {
               ),
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Cancelar',
-                  style:
-                      TextStyle(color: kInk, fontWeight: FontWeight.w600)),
+                  style: TextStyle(
+                      color: kInk, fontWeight: FontWeight.w600)),
             ),
             const SizedBox(height: 10),
             FilledButton(
@@ -125,36 +129,44 @@ class _CalendarPageState extends State<CalendarPage> {
               ),
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Confirmar',
-                  style:
-                      TextStyle(color: kInk, fontWeight: FontWeight.w700)),
+                  style: TextStyle(
+                      color: kInk, fontWeight: FontWeight.w700)),
             ),
           ]),
         ],
       ),
     );
+
     return result ?? false;
   }
 
+  // ===============================
+  // 🔍 CARGAR RECUERDOS
+  // ===============================
   Future<void> _loadMemory(DateTime date) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
     final doc = await FirebaseFirestore.instance
         .collection('memories')
         .doc(user.uid)
         .collection('user_memories')
         .doc(_dateId(date))
         .get();
+
     setState(() => _selectedMemory = doc.exists ? doc.data() : null);
   }
 
   Future<void> _loadMonthMemories(DateTime date) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
     final qs = await FirebaseFirestore.instance
         .collection('memories')
         .doc(user.uid)
         .collection('user_memories')
         .get();
+
     setState(() {
       _memoryDayIds
         ..clear()
@@ -163,11 +175,12 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   // ==========================================================
-  // MODAL CREAR / EDITAR RECUERDO
+  // 📸 MODAL CREAR / EDITAR RECUERDO
   // ==========================================================
   void _openMemoryDialog(DateTime date) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
     final textCtrl =
         TextEditingController(text: _selectedMemory?['text'] ?? '');
     File? selectedImage;
@@ -202,12 +215,14 @@ class _CalendarPageState extends State<CalendarPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
+
                 Text("Recuerdo del ${date.day}/${date.month}/${date.year}",
                     style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
                         color: kInk)),
                 const SizedBox(height: 12),
+
                 TextField(
                   controller: textCtrl,
                   maxLines: 3,
@@ -217,7 +232,7 @@ class _CalendarPageState extends State<CalendarPage> {
                 ),
                 const SizedBox(height: 12),
 
-                // 🕓 Selector de hora
+                // 🕒 Selector hora
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
                       backgroundColor: kBlue,
@@ -234,95 +249,115 @@ class _CalendarPageState extends State<CalendarPage> {
                   label: Text(
                       'Hora del recuerdo: ${_selectedTime.format(context)}'),
                 ),
+
                 const SizedBox(height: 12),
 
-                // 🔁 Frecuencia personalizada
+                // 🔁 Frecuencia
                 DropdownButtonFormField<String>(
                   initialValue: _cadence.name,
                   decoration: const InputDecoration(
                     labelText: 'Frecuencia del recordatorio',
                   ),
                   items: const [
-                    DropdownMenuItem(value: 'hourly1', child: Text('Cada 1 hora')),
-                    DropdownMenuItem(value: 'hourly2', child: Text('Cada 2 horas')),
-                    DropdownMenuItem(value: 'hourly6', child: Text('Cada 6 horas')),
-                    DropdownMenuItem(value: 'daily1', child: Text('Cada 1 día')),
-                    DropdownMenuItem(value: 'daily2', child: Text('Cada 2 días')),
-                    DropdownMenuItem(value: 'weekly', child: Text('Cada semana')),
-                    DropdownMenuItem(value: 'biweekly', child: Text('Cada 2 semanas')),
-                    DropdownMenuItem(value: 'monthly', child: Text('Cada mes')),
-                    DropdownMenuItem(value: 'quarterly', child: Text('Cada 3 meses')),
-                    DropdownMenuItem(value: 'semiannual', child: Text('Cada 6 meses')),
-                    DropdownMenuItem(value: 'annual', child: Text('Cada año')),
+                    DropdownMenuItem(
+                        value: 'hourly1', child: Text('Cada 1 hora')),
+                    DropdownMenuItem(
+                        value: 'hourly2', child: Text('Cada 2 horas')),
+                    DropdownMenuItem(
+                        value: 'hourly6', child: Text('Cada 6 horas')),
+                    DropdownMenuItem(
+                        value: 'daily1', child: Text('Cada 1 día')),
+                    DropdownMenuItem(
+                        value: 'daily2', child: Text('Cada 2 días')),
+                    DropdownMenuItem(
+                        value: 'weekly', child: Text('Cada semana')),
+                    DropdownMenuItem(
+                        value: 'biweekly', child: Text('Cada 2 semanas')),
+                    DropdownMenuItem(
+                        value: 'monthly', child: Text('Cada mes')),
+                    DropdownMenuItem(
+                        value: 'quarterly', child: Text('Cada 3 meses')),
+                    DropdownMenuItem(
+                        value: 'semiannual', child: Text('Cada 6 meses')),
+                    DropdownMenuItem(
+                        value: 'annual', child: Text('Cada año')),
                   ],
                   onChanged: (val) {
                     if (val != null) {
-                      setModalState(() => _cadence = cadenceFromString(val));
+                      setModalState(() =>
+                          _cadence = cadenceFromString(val));
                     }
                   },
                 ),
+
                 const SizedBox(height: 12),
 
-                // Imagen previa
+                // Imagen previa actual o nueva
                 if (selectedImage != null)
                   ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.file(selectedImage!,
-                          height: 150, fit: BoxFit.cover))
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.file(selectedImage!,
+                        height: 150, fit: BoxFit.cover),
+                  )
                 else if (_selectedMemory?['imageUrl'] != null)
                   ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.network(
-                        _selectedMemory!['imageUrl'],
-                        height: 150,
-                        fit: BoxFit.cover,
-                      )),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.network(_selectedMemory!['imageUrl'],
+                        height: 150, fit: BoxFit.cover),
+                  ),
+
                 const SizedBox(height: 8),
 
-                // Botones de imagen
+                // Botones imagen
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  mainAxisAlignment:
+                      MainAxisAlignment.spaceEvenly,
                   children: [
                     ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: kPurple,
-                            foregroundColor: kInk,
-                            shape: const StadiumBorder(),
-                            minimumSize: const Size(140, 44)),
-                        onPressed: () async {
-                          final picked = await ImagePicker()
-                              .pickImage(source: ImageSource.gallery);
-                          if (picked != null) {
-                            setModalState(() =>
-                                selectedImage = File(picked.path));
-                          }
-                        },
-                        icon: const Icon(Icons.image),
-                        label: const Text('Galería')),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: kPurple,
+                          foregroundColor: kInk,
+                          shape: const StadiumBorder(),
+                          minimumSize: const Size(140, 44)),
+                      onPressed: () async {
+                        final picked = await ImagePicker()
+                            .pickImage(source: ImageSource.gallery);
+                        if (picked != null) {
+                          setModalState(() =>
+                              selectedImage = File(picked.path));
+                        }
+                      },
+                      icon: const Icon(Icons.image),
+                      label: const Text('Galería'),
+                    ),
                     ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: kGreenPastel,
-                            foregroundColor: kInk,
-                            shape: const StadiumBorder(),
-                            minimumSize: const Size(140, 44)),
-                        onPressed: () async {
-                          final picked = await ImagePicker()
-                              .pickImage(source: ImageSource.camera);
-                          if (picked != null) {
-                            setModalState(() =>
-                                selectedImage = File(picked.path));
-                          }
-                        },
-                        icon: const Icon(Icons.camera_alt),
-                        label: const Text('Cámara')),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: kGreenPastel,
+                          foregroundColor: kInk,
+                          shape: const StadiumBorder(),
+                          minimumSize: const Size(140, 44)),
+                      onPressed: () async {
+                        final picked = await ImagePicker()
+                            .pickImage(source: ImageSource.camera);
+                        if (picked != null) {
+                          setModalState(() =>
+                              selectedImage = File(picked.path));
+                        }
+                      },
+                      icon: const Icon(Icons.camera_alt),
+                      label: const Text('Cámara'),
+                    ),
                   ],
                 ),
+
                 const SizedBox(height: 8),
 
-                // 💾 Guardar
+                // ===============================
+                // 💾 GUARDAR RECUERDO
+                // ===============================
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF8BCBFF), // Azul cielo
+                    backgroundColor: const Color(0xFF8BCBFF),
                     foregroundColor: kInk,
                     shape: const StadiumBorder(),
                     minimumSize: const Size.fromHeight(48),
@@ -338,29 +373,39 @@ class _CalendarPageState extends State<CalendarPage> {
                             return;
                           }
 
-                          // 🚫 Validar foto obligatoria
                           if (selectedImage == null &&
-                              (_selectedMemory?['imageUrl'] == null)) {
-                            _showDialog('Falta imagen',
-                                'Debes subir una foto del recuerdo antes de guardar.',
+                              (_selectedMemory?['imageUrl'] ==
+                                  null)) {
+                            _showDialog(
+                                'Falta imagen',
+                                'Debes subir una foto antes de guardar.',
                                 success: false);
                             return;
                           }
 
                           setModalState(() => isSaving = true);
+
                           try {
                             final userId = user.uid;
                             final dateId = _dateId(date);
                             String? imageUrl =
                                 _selectedMemory?['imageUrl'];
+
+                            // ============================
+                            // 📌 CORRECCIÓN IMPORTANTE
+                            // ============================
                             if (selectedImage != null) {
-                              final ref = FirebaseStorage.instance
+                              final ref = FirebaseStorage
+                                  .instance
                                   .ref()
-                                  .child('diary_images/$userId/$dateId.jpg');
+                                  .child('user_memories')
+                                  .child(userId)
+                                  .child('$dateId.jpg');
+
                               final uploadTask =
                                   await ref.putFile(selectedImage!);
-                              imageUrl =
-                                  await uploadTask.ref.getDownloadURL();
+                              imageUrl = await uploadTask.ref
+                                  .getDownloadURL();
                             }
 
                             await FirebaseFirestore.instance
@@ -373,26 +418,32 @@ class _CalendarPageState extends State<CalendarPage> {
                               'text': textCtrl.text.trim(),
                               'imageUrl': imageUrl,
                               'frequency': _cadence.name,
-                              'updatedAt': FieldValue.serverTimestamp(),
+                              'updatedAt':
+                                  FieldValue.serverTimestamp(),
                             });
 
-                            // ⏰ Asegurar ancla futura
+                            // Notificación con hora seleccionada
                             DateTime anchor = DateTime(
                                 date.year,
                                 date.month,
                                 date.day,
                                 _selectedTime.hour,
                                 _selectedTime.minute);
+
                             final now = DateTime.now();
                             if (anchor.isBefore(now)) {
-                              anchor = now.add(const Duration(minutes: 1));
+                              anchor = now.add(
+                                  const Duration(minutes: 1));
                             }
 
-                            final title = textCtrl.text.trim().isEmpty
+                            final title = textCtrl.text
+                                    .trim()
+                                    .isEmpty
                                 ? 'Recuerdo del ${date.day}/${date.month}/${date.year}'
                                 : textCtrl.text.trim();
 
-                            await NotificationsService.scheduleForMemory(
+                            await NotificationsService
+                                .scheduleForMemory(
                               memoryId: dateId,
                               title: title,
                               anchorDate: anchor,
@@ -401,26 +452,32 @@ class _CalendarPageState extends State<CalendarPage> {
                             );
 
                             if (mounted) Navigator.pop(ctx);
-                            _showDialog('Recuerdo guardado',
-                                'Tu recuerdo se ha guardado y se programaron notificaciones.',
+
+                            _showDialog(
+                                'Recuerdo guardado',
+                                'Tu recuerdo se ha guardado correctamente.',
                                 success: true);
 
                             await _loadMemory(date);
-                            await _loadMonthMemories(_focusedDay);
+                            await _loadMonthMemories(
+                                _focusedDay);
                           } catch (e) {
-                            _showDialog('Error al guardar',
-                                'Ocurrió un problema al guardar el recuerdo.\n\n$e',
+                            _showDialog(
+                                'Error al guardar',
+                                'Ocurrió un problema:\n\n$e',
                                 success: false);
                           } finally {
                             setModalState(() => isSaving = false);
                           }
                         },
                   icon: const Icon(Icons.save),
-                  label: Text(isSaving ? 'Guardando...' : 'Guardar'),
+                  label: Text(
+                      isSaving ? 'Guardando...' : 'Guardar'),
                 ),
+
                 const SizedBox(height: 8),
 
-                // 🗑️ Eliminar recuerdo
+                // 🗑️ Eliminar
                 if (_selectedMemory != null)
                   FilledButton.icon(
                     style: FilledButton.styleFrom(
@@ -431,12 +488,16 @@ class _CalendarPageState extends State<CalendarPage> {
                     onPressed: () async {
                       final confirm = await _confirmDialog(
                           'Eliminar recuerdo',
-                          '¿Estás seguro de eliminar tu recuerdo?');
+                          '¿Deseas eliminar el recuerdo?');
+
                       if (!confirm) return;
 
                       final userId = user.uid;
                       final dateId = _dateId(date);
-                      await NotificationsService.cancelAllForMemory(dateId);
+
+                      await NotificationsService
+                          .cancelAllForMemory(dateId);
+
                       await FirebaseFirestore.instance
                           .collection('memories')
                           .doc(userId)
@@ -444,18 +505,21 @@ class _CalendarPageState extends State<CalendarPage> {
                           .doc(dateId)
                           .delete();
 
-                      setState(() => _memoryDayIds.remove(dateId));
-
                       if (_selectedMemory?['imageUrl'] != null) {
                         final ref = FirebaseStorage.instance
                             .ref()
-                            .child('diary_images/$userId/$dateId.jpg');
+                            .child('user_memories')
+                            .child(userId)
+                            .child('$dateId.jpg');
+
                         await ref.delete().catchError((_) {});
                       }
 
                       if (mounted) Navigator.pop(ctx);
+
                       _showDialog('Recuerdo eliminado',
-                          'Tu recuerdo y notificación fueron eliminados.');
+                          'El recuerdo fue eliminado.');
+
                       await _loadMemory(date);
                     },
                     icon: const Icon(Icons.delete),
@@ -468,9 +532,8 @@ class _CalendarPageState extends State<CalendarPage> {
       ),
     );
   }
-
   // ==========================================================
-  // CALENDARIO + UI PRINCIPAL
+  // 🗓️ CALENDARIO + UI PRINCIPAL
   // ==========================================================
   @override
   Widget build(BuildContext context) {
@@ -492,6 +555,7 @@ class _CalendarPageState extends State<CalendarPage> {
         child: Column(
           children: [
             const SizedBox(height: 12),
+
             // 🔍 Buscador D/M/A
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -500,7 +564,8 @@ class _CalendarPageState extends State<CalendarPage> {
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
                   hintText: 'Ir a fecha (D/M/A)',
-                  prefixIcon: const Icon(Icons.calendar_today_outlined),
+                  prefixIcon:
+                      const Icon(Icons.calendar_today_outlined),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -508,7 +573,8 @@ class _CalendarPageState extends State<CalendarPage> {
                   fillColor: Colors.white,
                   suffixIcon: (_searchCtrl.text.isNotEmpty)
                       ? IconButton(
-                          onPressed: () => setState(() => _searchCtrl.clear()),
+                          onPressed: () =>
+                              setState(() => _searchCtrl.clear()),
                           icon: const Icon(Icons.clear),
                         )
                       : null,
@@ -516,11 +582,13 @@ class _CalendarPageState extends State<CalendarPage> {
                 onChanged: _onDateInputChanged,
               ),
             ),
+
             const SizedBox(height: 16),
 
             // 📅 Calendario
             Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              margin: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -537,18 +605,23 @@ class _CalendarPageState extends State<CalendarPage> {
                   formatButtonVisible: false,
                   titleCentered: true,
                   titleTextStyle: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: kInk),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: kInk,
+                  ),
                 ),
                 calendarStyle: const CalendarStyle(
                   defaultTextStyle: TextStyle(color: kInk),
                   weekendTextStyle: TextStyle(color: kInk),
                   outsideTextStyle: TextStyle(color: kGrey1),
-                  todayDecoration:
-                      BoxDecoration(color: kBlue, shape: BoxShape.circle),
-                  selectedDecoration:
-                      BoxDecoration(color: kPurple, shape: BoxShape.circle),
+                  todayDecoration: BoxDecoration(
+                    color: kBlue,
+                    shape: BoxShape.circle,
+                  ),
+                  selectedDecoration: BoxDecoration(
+                    color: kPurple,
+                    shape: BoxShape.circle,
+                  ),
                   markersAlignment: Alignment.bottomCenter,
                   markersMaxCount: 1,
                 ),
@@ -559,30 +632,39 @@ class _CalendarPageState extends State<CalendarPage> {
                 },
                 calendarBuilders: CalendarBuilders(
                   markerBuilder: (ctx, day, events) {
-                    if (events.isEmpty) return const SizedBox.shrink();
+                    if (events.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 3),
                       child: Container(
                         width: 6,
                         height: 6,
                         decoration: const BoxDecoration(
-                            shape: BoxShape.circle, color: kBlue),
+                          shape: BoxShape.circle,
+                          color: kBlue,
+                        ),
                       ),
                     );
                   },
                 ),
-                selectedDayPredicate: (day) => isSameDay(day, _selectedDay),
+                selectedDayPredicate: (day) =>
+                    isSameDay(day, _selectedDay),
                 onDaySelected: (selected, focused) async {
                   if (_isFutureDay(selected)) {
-                    _showDialog('Fecha no permitida',
-                        'No puedes seleccionar fechas futuras para guardar recuerdos.',
-                        success: false);
+                    _showDialog(
+                      'Fecha no permitida',
+                      'No puedes seleccionar fechas futuras para guardar recuerdos.',
+                      success: false,
+                    );
                     return;
                   }
+
                   setState(() {
                     _selectedDay = selected;
                     _focusedDay = focused;
                   });
+
                   await _loadMemory(selected);
                 },
                 onPageChanged: (focused) {
@@ -594,24 +676,31 @@ class _CalendarPageState extends State<CalendarPage> {
 
             // 🟣 Botón principal
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 8),
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
-                    backgroundColor: hasMemory ? kBlue : kPurple,
-                    minimumSize: const Size.fromHeight(48),
-                    shape: const StadiumBorder()),
-                icon: Icon(hasMemory ? Icons.edit : Icons.upload,
-                    color: kInk),
+                  backgroundColor: hasMemory ? kBlue : kPurple,
+                  minimumSize: const Size.fromHeight(48),
+                  shape: const StadiumBorder(),
+                ),
+                icon: Icon(
+                  hasMemory ? Icons.edit : Icons.upload,
+                  color: kInk,
+                ),
                 label: Text(
-                    hasMemory
-                        ? 'Modificar recuerdo'
-                        : 'Subir recuerdo',
-                    style: const TextStyle(
-                        color: kInk, fontWeight: FontWeight.w700)),
+                  hasMemory
+                      ? 'Modificar recuerdo'
+                      : 'Subir recuerdo',
+                  style: const TextStyle(
+                    color: kInk,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 onPressed: () async {
                   if (_selectedDay == null) return;
                   final selected = _selectedDay!;
+
                   final wants = await _confirmDialog(
                     hasMemory
                         ? 'Modificar recuerdo'
@@ -620,7 +709,9 @@ class _CalendarPageState extends State<CalendarPage> {
                         ? 'Ya existe un recuerdo en esta fecha. ¿Deseas modificarlo?'
                         : '¿Deseas subir un recuerdo para el ${selected.day}/${selected.month}/${selected.year}?',
                   );
+
                   if (!wants) return;
+
                   _openMemoryDialog(selected);
                 },
               ),
@@ -628,8 +719,8 @@ class _CalendarPageState extends State<CalendarPage> {
 
             if (_selectedMemory != null)
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 8),
                 child: _buildMemoryCard(selectedDate),
               ),
           ],
@@ -638,75 +729,113 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 
-  // Tarjeta de recuerdo
+  // ==========================================================
+  // 🧾 TARJETA DE RECUERDO
+  // ==========================================================
   Widget _buildMemoryCard(DateTime date) {
     return Container(
-        decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: kFieldBorder),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6))
-            ]),
-        clipBehavior: Clip.antiAlias,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: kFieldBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          )
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                      colors: [
-                        kBlue.withOpacity(0.35),
-                        kPurple.withOpacity(0.35)
-                      ],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight)),
-              child: Row(children: [
+            padding: const EdgeInsets.symmetric(
+                horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  kBlue.withOpacity(0.35),
+                  kPurple.withOpacity(0.35),
+                ],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+            ),
+            child: Row(
+              children: [
                 const Icon(Icons.bookmark, color: kInk),
                 const SizedBox(width: 8),
-                Text(_formatDateEs(date),
-                    style: const TextStyle(
-                        color: kInk,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16))
-              ])),
+                Text(
+                  _formatDateEs(date),
+                  style: const TextStyle(
+                    color: kInk,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
           Padding(
-              padding: const EdgeInsets.all(16),
-              child:
-                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                if ((_selectedMemory!['text'] ?? '').toString().isNotEmpty)
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                if ((_selectedMemory!['text'] ?? '')
+                    .toString()
+                    .isNotEmpty)
                   Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                          color: kFieldFill,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: kFieldBorder)),
-                      child: Text(_selectedMemory!['text'],
-                          style: const TextStyle(
-                              fontSize: 16, color: kInk, height: 1.35))),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: kFieldFill,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: kFieldBorder),
+                    ),
+                    child: Text(
+                      _selectedMemory!['text'],
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: kInk,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 if (_selectedMemory?['imageUrl'] != null)
                   ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Image.network(_selectedMemory!['imageUrl'],
-                          fit: BoxFit.cover))
-              ]))
-        ]));
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.network(
+                      _selectedMemory!['imageUrl'],
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
+  // ==========================================================
+  // 🔎 BUSCAR POR FECHA D/M/A
+  // ==========================================================
   void _onDateInputChanged(String value) {
     if (value.length == 2 && !value.contains('/')) {
       _searchCtrl.text = '$value/';
-      _searchCtrl.selection =
-          TextSelection.fromPosition(TextPosition(offset: _searchCtrl.text.length));
+      _searchCtrl.selection = TextSelection.fromPosition(
+        TextPosition(offset: _searchCtrl.text.length),
+      );
       return;
-    } else if (value.length == 5 && value.split('/').length == 2) {
+    } else if (value.length == 5 &&
+        value.split('/').length == 2) {
       _searchCtrl.text = '$value/';
-      _searchCtrl.selection =
-          TextSelection.fromPosition(TextPosition(offset: _searchCtrl.text.length));
+      _searchCtrl.selection = TextSelection.fromPosition(
+        TextPosition(offset: _searchCtrl.text.length),
+      );
       return;
     }
 
@@ -717,13 +846,18 @@ class _CalendarPageState extends State<CalendarPage> {
       final y = int.tryParse(parts[2]);
       if (d == null || m == null || y == null) return;
       if (m < 1 || m > 12 || d < 1 || d > 31) return;
+
       final newDate = DateTime(y, m, d);
-      if (newDate.month != m || newDate.day != d || newDate.year != y) return;
+      if (newDate.month != m ||
+          newDate.day != d ||
+          newDate.year != y) return;
       if (_isFutureDay(newDate)) return;
+
       setState(() {
         _selectedDay = newDate;
         _focusedDay = newDate;
       });
+
       _loadMemory(newDate);
       _loadMonthMemories(newDate);
     }

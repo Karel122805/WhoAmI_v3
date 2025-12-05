@@ -41,7 +41,7 @@
     <!-- ====== 🧠 CONFIGURACIÓN DE LA APP ====== -->
     <application
         android:name="${applicationName}"
-        android:label="Who Am I?"
+        android:label="WhoAmI?"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
 

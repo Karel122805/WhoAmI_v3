@@ -1,0 +1,6 @@
+projectKey=whoami_app2
+serverUrl=http://localhost:9000
+serverVersion=25.10.0.114319
+dashboardUrl=http://localhost:9000/dashboard?id=whoami_app2
+ceTaskId=c4b73dd9-eb5c-420b-a947-623f457104f6
+ceTaskUrl=http://localhost:9000/api/ce/task?id=c4b73dd9-eb5c-420b-a947-623f457104f6
