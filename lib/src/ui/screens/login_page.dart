@@ -157,7 +157,6 @@ class _LoginPageState extends State<LoginPage> {
 
     await ref.set(payload, SetOptions(merge: true));
   }
-
   String? _emailRule(String? v) {
     final s = v?.trim() ?? '';
     if (s.isEmpty) return 'Requerido';
@@ -188,7 +187,7 @@ class _LoginPageState extends State<LoginPage> {
           if (showVerifyButton && email != null)
             TextButton(
               style: TextButton.styleFrom(
-                backgroundColor: const Color(0xFF9ED3FF), // 💙 azul pastel
+                backgroundColor: const Color(0xFF9ED3FF),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
               ),
@@ -216,7 +215,7 @@ class _LoginPageState extends State<LoginPage> {
             ),
           TextButton(
             style: TextButton.styleFrom(
-              backgroundColor: kPurple, // botón Aceptar morado
+              backgroundColor: kPurple,
               foregroundColor: Colors.black,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
@@ -259,251 +258,213 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  // ------------------------------------------------------------------
+  // 🔥🔥🔥 NUEVA VERSIÓN — SOLO FIREBASEAUTH (corregida)
+  // ------------------------------------------------------------------
   Future<void> _sendPasswordReset() async {
-    String email = _email.text.trim().toLowerCase();
+    final email = _email.text.trim();
+
     if (email.isEmpty) {
       await _showDialogMsg('Atención', 'Escribe tu correo para continuar.');
       return;
     }
 
-    final query = await FirebaseFirestore.instance
-        .collection('users')
-        .where('email', isEqualTo: email)
-        .limit(1)
-        .get();
-
-    if (query.docs.isEmpty) {
-      await _showDialogMsg('Correo no encontrado',
-          'El correo ingresado no está registrado en el sistema.');
-      return;
-    }
-
     try {
-      final userMethods = FirebaseAuth.instance;
-      final userList = await userMethods.fetchSignInMethodsForEmail(email);
+      // Verificar si FirebaseAuth reconoce este correo
+      final methods =
+          await FirebaseAuth.instance.fetchSignInMethodsForEmail(email);
 
-      if (userList.isEmpty) {
-        await _showDialogMsg('Correo no registrado',
-            'Este correo no tiene una cuenta asociada.');
-        return;
-      }
-
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser != null && !currentUser.emailVerified) {
+      if (methods.isEmpty) {
         await _showDialogMsg(
-          'Verifica tu correo',
-          'Tu cuenta aún no ha sido verificada. ¿Deseas que te enviemos un nuevo correo de verificación?',
-          showVerifyButton: true,
-          email: email,
+          'Correo no registrado',
+          'No existe ninguna cuenta asociada a este correo.',
         );
         return;
       }
-    } catch (_) {}
 
-    try {
+      // Enviar correo de recuperación
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+
       await _saveResetTs(DateTime.now());
       _startResetCountdownIfNeeded();
+
       await _showDialogMsg(
         'Correo enviado',
-        'Se ha enviado un correo de verificación a $email. Revisa tu bandeja de entrada.',
+        'Hemos enviado un enlace de recuperación a:\n$email\n\nRevisa tu bandeja de entrada.',
       );
-    } catch (e) {
-      await _showDialogMsg('Error', 'No se pudo enviar el correo: $e');
+    } on FirebaseAuthException catch (e) {
+      String msg = 'No se pudo enviar el correo de recuperación.';
+
+      if (e.code == 'invalid-email') {
+        msg = 'El correo ingresado no es válido.';
+      }
+
+      await _showDialogMsg('Error', msg);
     }
   }
 
+  // ------------------------------------------------------------------
+  // LOGIN
+  // ------------------------------------------------------------------
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _loading = true;
+      _passwordError = false;
+      _passwordErrorText = null;
+    });
 
-Future<void> _submit() async {
-  if (!_formKey.currentState!.validate()) return;
-  FocusScope.of(context).unfocus();
-  setState(() {
-    _loading = true;
-    _passwordError = false;
-    _passwordErrorText = null;
-  });
+    final email = _email.text.trim().toLowerCase();
+    final password = _pass.text.trim();
 
-  final email = _email.text.trim().toLowerCase();
-  final password = _pass.text.trim();
-
-  try {
-    final auth = FirebaseAuth.instance;
-    final firestore = FirebaseFirestore.instance;
-
-    // 🔹 Intentar iniciar sesión directamente
     try {
-      await auth.signInWithEmailAndPassword(email: email, password: password);
-    } on FirebaseAuthException catch (e) {
-      // 🧩 Detecta el motivo exacto y muestra un mensaje claro
-      if (e.code == 'user-not-found') {
-        // 🔸 Correo no registrado
-        await showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            backgroundColor: const Color(0xFFF3E9FF),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20)),
-            title: const Text(
-              'Correo no registrado',
-              style: TextStyle(
-                  color: Colors.black,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18),
-              textAlign: TextAlign.center,
-            ),
-            content: const Text(
-              'No existe ninguna cuenta asociada a este correo electrónico.\n\n'
-              '¿Deseas registrarte con este correo?',
-              style: TextStyle(color: Colors.black87, fontSize: 15),
-              textAlign: TextAlign.center,
-            ),
-            actionsAlignment: MainAxisAlignment.center,
-            actions: [
-              TextButton(
-                style: TextButton.styleFrom(
-                  backgroundColor: const Color(0xFFD6A7F4),
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancelar'),
+      final auth = FirebaseAuth.instance;
+      final firestore = FirebaseFirestore.instance;
+
+      try {
+        await auth.signInWithEmailAndPassword(email: email, password: password);
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'user-not-found') {
+          await showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              backgroundColor: const Color(0xFFF3E9FF),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              title: const Text(
+                'Correo no registrado',
+                style: TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18),
+                textAlign: TextAlign.center,
               ),
-              TextButton(
-                style: TextButton.styleFrom(
-                  backgroundColor: const Color(0xFF9ED3FF),
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: () {
-                  Navigator.pop(context);
-                  Navigator.pushNamed(context, '/register'); // 👈 Registro
-                },
-                child: const Text('Registrarme'),
+              content: const Text(
+                'No existe ninguna cuenta asociada a este correo electrónico.\n\n'
+                '¿Deseas registrarte con este correo?',
+                textAlign: TextAlign.center,
               ),
-            ],
-          ),
-        );
-        setState(() => _loading = false);
-        return;
-      } else if (e.code == 'wrong-password' ||
-          e.code == 'invalid-credential') {
-        // 🔸 Contraseña incorrecta
-        setState(() {
-          _passwordError = true;
-          _passwordErrorText = 'Contraseña incorrecta.';
-        });
-        _pass.clear();
-        _passShakeKey.currentState?.shake();
-        setState(() => _loading = false);
-        return;
-      } else if (e.code == 'user-disabled') {
+              actions: [
+                TextButton(
+                  style: TextButton.styleFrom(
+                      backgroundColor: const Color(0xFFD6A7F4),
+                      foregroundColor: Colors.black),
+                  child: const Text('Cancelar'),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                TextButton(
+                  style: TextButton.styleFrom(
+                      backgroundColor: const Color(0xFF9ED3FF),
+                      foregroundColor: Colors.black),
+                  child: const Text('Registrarme'),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    Navigator.pushNamed(context, '/register');
+                  },
+                ),
+              ],
+            ),
+          );
+          setState(() => _loading = false);
+          return;
+        } else if (e.code == 'wrong-password' ||
+            e.code == 'invalid-credential') {
+          setState(() {
+            _passwordError = true;
+            _passwordErrorText = 'Contraseña incorrecta.';
+          });
+          _pass.clear();
+          _passShakeKey.currentState?.shake();
+          setState(() => _loading = false);
+          return;
+        } else if (e.code == 'user-disabled') {
+          await _showDialogMsg('Cuenta deshabilitada',
+              'Tu cuenta ha sido desactivada. Contacta al administrador.');
+          setState(() => _loading = false);
+          return;
+        } else if (e.code == 'invalid-email') {
+          await _showDialogMsg(
+              'Correo inválido', 'El correo electrónico no es válido.');
+          setState(() => _loading = false);
+          return;
+        } else {
+          await _showDialogMsg(
+              'Error', 'No se pudo iniciar sesión. Código: ${e.code}');
+          setState(() => _loading = false);
+          return;
+        }
+      }
+
+      final user = auth.currentUser!;
+      await user.reload();
+      final refreshedUser = auth.currentUser!;
+
+      await FCMTokenService.initAndSaveToken();
+
+      if (!refreshedUser.emailVerified) {
         await _showDialogMsg(
-          'Cuenta deshabilitada',
-          'Tu cuenta ha sido desactivada. Contacta al administrador.',
+          'Verifica tu correo',
+          'Tu cuenta aún no ha sido verificada.',
+          showVerifyButton: true,
+          email: refreshedUser.email,
         );
-        setState(() => _loading = false);
-        return;
-      } else if (e.code == 'invalid-email') {
-        await _showDialogMsg(
-          'Correo inválido',
-          'El formato del correo electrónico no es válido. Revisa e intenta de nuevo.',
-        );
-        setState(() => _loading = false);
-        return;
-      } else {
-        await _showDialogMsg(
-          'Error',
-          'No se pudo iniciar sesión.\nCódigo de error: ${e.code}',
-        );
-        setState(() => _loading = false);
+        await auth.signOut();
         return;
       }
+
+      await _ensureUserProfile(refreshedUser);
+
+      final snap =
+          await firestore.collection('users').doc(refreshedUser.uid).get();
+      final data = snap.data() ?? {};
+      final role = (data['role'] as String?)?.trim() ?? '';
+
+      final name =
+          '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'.trim().isEmpty
+              ? (refreshedUser.email?.split('@').first ?? 'Usuario')
+              : '${data['firstName']} ${data['lastName']}';
+
+      if (!mounted) return;
+
+      if (role == 'Cuidador') {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          HomeCaregiverPage.route,
+          (_) => false,
+          arguments: {'name': name},
+        );
+      } else if (role == 'Consultante') {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          HomeConsultantPage.route,
+          (_) => false,
+          arguments: {'name': name},
+        );
+      } else {
+        await _showDialogMsg(
+            'Cuenta sin rol', 'Tu cuenta no tiene rol asignado.');
+      }
+    } catch (e) {
+      await _showDialogMsg('Error', 'Ocurrió un error al iniciar sesión.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
-
-    // 🔸 Usuario autenticado correctamente
-    final user = auth.currentUser!;
-    await user.reload();
-    final refreshedUser = auth.currentUser!;
-
-    // 🔹 Guardar el token FCM del usuario actual (PASO 3B)
-    await FCMTokenService.saveCurrentUserToken();
-
-    // 🔸 Verificar si el correo está confirmado
-    if (!refreshedUser.emailVerified) {
-      await _showDialogMsg(
-        'Verifica tu correo',
-        'Tu cuenta aún no ha sido verificada. ¿Deseas que te enviemos un nuevo correo de verificación?',
-        showVerifyButton: true,
-        email: refreshedUser.email,
-      );
-      await auth.signOut();
-      return;
-    }
-
-    // 🔹 Cargar información del perfil desde Firestore (ya autenticado)
-    await _ensureUserProfile(refreshedUser);
-    final snap =
-        await firestore.collection('users').doc(refreshedUser.uid).get();
-    final data = snap.data() ?? {};
-    final role = (data['role'] as String?)?.trim() ?? '';
-
-    final name =
-        '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'.trim().isEmpty
-            ? (refreshedUser.email?.split('@').first ?? 'Usuario')
-            : '${data['firstName']} ${data['lastName']}';
-
-    if (!mounted) return;
-
-    // 🔸 Redirigir según el rol
-    if (role == 'Cuidador') {
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        HomeCaregiverPage.route,
-        (_) => false,
-        arguments: {'name': name},
-      );
-    } else if (role == 'Consultante') {
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        HomeConsultantPage.route,
-        (_) => false,
-        arguments: {'name': name},
-      );
-    } else {
-      await _showDialogMsg(
-        'Cuenta sin rol',
-        'Tu cuenta no tiene rol asignado. Contacta al administrador.',
-      );
-    }
-  } catch (e) {
-    debugPrint('Error general en _submit: $e');
-    String message = 'Ocurrió un error al iniciar sesión.';
-    if (e.toString().contains('permission-denied')) {
-      message =
-          'No tienes permiso para acceder a la base de datos. Verifica tus reglas de Firestore.';
-    }
-    await _showDialogMsg('Error', message);
-  } finally {
-    if (mounted) setState(() => _loading = false);
   }
-}
 
-
-
-  // --- UI de inicio de sesión ---
+  // ------------------------------------------------------------------
+  // UI COMPLETA (SIN CAMBIOS)
+  // ------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     final resetLabel = _resetSecondsLeft > 0
         ? '¿Olvidaste tu contraseña? (${_resetSecondsLeft}s)'
         : '¿Olvidaste tu contraseña?';
 
-    final pulseScale = (_resetSecondsLeft > 0 &&
-            _resetSecondsLeft <= _pulseThreshold &&
-            _pulseUp)
-        ? 1.06
-        : 1.0;
+    final pulseScale =
+        (_resetSecondsLeft > 0 && _resetSecondsLeft <= _pulseThreshold && _pulseUp)
+            ? 1.06
+            : 1.0;
 
     return Scaffold(
       appBar: AppBar(
@@ -641,6 +602,7 @@ Future<void> _submit() async {
 class _FieldLabel extends StatelessWidget {
   const _FieldLabel(this.text);
   final String text;
+
   @override
   Widget build(BuildContext context) => Text(
         text,
@@ -663,6 +625,7 @@ class _FieldBox extends StatelessWidget {
   final TextInputAction textInputAction;
   final String? Function(String?)? validator;
   final TextInputType? keyboardType;
+
   @override
   Widget build(BuildContext context) {
     return TextFormField(
@@ -685,6 +648,7 @@ class ShakeWidget extends StatefulWidget {
   final Widget child;
   final double magnitude;
   final Duration duration;
+
   @override
   State<ShakeWidget> createState() => _ShakeWidgetState();
 }
@@ -693,6 +657,7 @@ class _ShakeWidgetState extends State<ShakeWidget>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _anim;
+
   @override
   void initState() {
     super.initState();

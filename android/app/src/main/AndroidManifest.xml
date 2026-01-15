@@ -1,21 +1,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ====== 🔐 PERMISOS GLOBALES ====== -->
+    <!-- =========================
+         PERMISOS GLOBALES
+         ========================= -->
 
-    <!-- 🌐 Internet / Firebase -->
+    <!-- Internet / Firebase -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- 📷 Cámara -->
+    <!-- Cámara -->
     <uses-permission android:name="android.permission.CAMERA" />
 
-    <!-- 🔔 Notificaciones -->
+    <!-- Notificaciones (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Alarmas exactas (necesario para exactAllowWhileIdle en Android nuevo) -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
-    <!-- 🖼️ Lectura de fotos / galería -->
+    <!-- Galería / Fotos -->
     <uses-permission
         android:name="android.permission.READ_MEDIA_IMAGES"
         tools:targetApi="33" />
@@ -23,22 +27,24 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
-    <!-- 📍 Ubicación -->
+    <!-- Ubicación -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
-    <!-- 🔊 Vibración y audio (TTS) -->
+    <!-- Audio / Vibración -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
-    <!-- 📷 Declarar cámara como no obligatoria -->
+    <!-- Cámara no obligatoria -->
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />
 
-    <!-- ====== 🧠 CONFIGURACIÓN DE LA APP ====== -->
+    <!-- =========================
+         CONFIGURACIÓN DE LA APP
+         ========================= -->
     <application
         android:name="${applicationName}"
         android:label="WhoAmI?"
@@ -55,7 +61,6 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
 
-            <!-- Tema visible mientras arranca Flutter -->
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -66,7 +71,7 @@
             </intent-filter>
         </activity>
 
-        <!-- 📁 FileProvider (para cámara / compartir archivos) -->
+        <!-- FileProvider -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -77,7 +82,7 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- 🔔 Receivers de notificaciones -->
+        <!-- Receivers para notificaciones locales -->
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
             android:exported="false">
@@ -91,13 +96,15 @@
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
             android:exported="false" />
 
-        <!-- No borrar: usado por Flutter para registrar plugins -->
+        <!-- Flutter embedding -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
 
-    <!-- ====== 🔍 Consultas usadas por plugins ====== -->
+    <!-- =========================
+         QUERIES USADAS POR PLUGINS
+         ========================= -->
     <queries>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />

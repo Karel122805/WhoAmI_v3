@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../theme.dart'; // Para kInk
 
-class EmergencyMapPage extends StatefulWidget {
+class EmergencyMapPage extends StatelessWidget {
   final String consultantId;
   final double lat;
   final double lng;
 
-  /// 👇 Parámetro opcional para mostrar dentro de un diálogo
+  /// Vista dentro del diálogo
   final bool isDialog;
+
+  /// 🎨 Declaramos aquí el color de emergencia
+  static const Color kEmergencyRed = Color(0xFFFF9FA1);
 
   const EmergencyMapPage({
     super.key,
@@ -19,96 +22,74 @@ class EmergencyMapPage extends StatefulWidget {
   });
 
   @override
-  State<EmergencyMapPage> createState() => _EmergencyMapPageState();
-}
-
-class _EmergencyMapPageState extends State<EmergencyMapPage> {
-  GoogleMapController? _mapController;
-  Position? _currentPosition;
-
-  @override
-  void initState() {
-    super.initState();
-    _getCurrentPosition();
-  }
-
-  Future<void> _getCurrentPosition() async {
-    try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied ||
-            permission == LocationPermission.deniedForever) {
-          return;
-        }
-      }
-
-      final pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
-      setState(() {
-        _currentPosition = pos;
-      });
-    } catch (e) {
-      debugPrint('⚠️ Error obteniendo ubicación actual: $e');
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final LatLng patientLocation = LatLng(widget.lat, widget.lng);
+    final url = 'https://www.google.com/maps?q=$lat,$lng';
+    final uri = Uri.parse(url);
 
-    final markers = <Marker>{
-      Marker(
-        markerId: const MarkerId('patient'),
-        position: patientLocation,
-        infoWindow: const InfoWindow(title: 'Ubicación del consultante'),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-      ),
-    };
-
-    if (_currentPosition != null) {
-      markers.add(
-        Marker(
-          markerId: const MarkerId('caregiver'),
-          position:
-              LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-          infoWindow: const InfoWindow(title: 'Tu ubicación'),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+    // ⭐ VISTA PARA EL DIÁLOGO (sin mapa, con icono y color oficial Who Am I)
+    if (isDialog) {
+      return Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: kEmergencyRed.withOpacity(0.5),
+            width: 1.4,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(
+              Icons.emergency_share_rounded,
+              color: kEmergencyRed,   // 🟠 Ícono de emergencia
+              size: 72,
+            ),
+            SizedBox(height: 14),
+            Text(
+              "Toca el botón para abrir la ubicación\nen Google Maps",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: kInk,
+              ),
+            ),
+          ],
         ),
       );
     }
 
-    final mapWidget = GoogleMap(
-      initialCameraPosition: CameraPosition(
-        target: patientLocation,
-        zoom: 15,
-      ),
-      markers: markers,
-      myLocationEnabled: true,
-      myLocationButtonEnabled: true,
-      onMapCreated: (controller) => _mapController = controller,
-    );
-
-    // 🟣 Si se muestra dentro de una ventana, solo devolvemos el mapa sin Scaffold
-    if (widget.isDialog) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: mapWidget,
-      );
-    }
-
-    // 🟢 Si se muestra como pantalla independiente
+    // ⭐ VISTA COMPLETA COMO PANTALLA (solo botón)
     return Scaffold(
       appBar: AppBar(
         title: const Text('Ubicación de emergencia'),
-        backgroundColor: Colors.redAccent,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: kInk,
       ),
-      body: mapWidget,
+      body: Center(
+        child: ElevatedButton.icon(
+          icon: const Icon(Icons.navigation_rounded, color: Colors.white),
+          label: const Text(
+            "Abrir en Google Maps",
+            style: TextStyle(color: Colors.white),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: kEmergencyRed, // 🟠 Botón usando color oficial
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            elevation: 3,
+          ),
+          onPressed: () async {
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          },
+        ),
+      ),
     );
   }
 }

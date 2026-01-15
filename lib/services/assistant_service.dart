@@ -12,7 +12,7 @@ class AssistantService {
 
   final _gemini = GenerativeModel(
     model: 'gemini-2.0-flash',
-    apiKey: '',
+    apiKey: 'AIzaSyDuNPAH7v-_JjW6Q0Epeza2l5cLvpBbGzM',
   );
 
   static const List<String> _mesesNombre = [

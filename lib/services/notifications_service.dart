@@ -1,14 +1,14 @@
-// 🔔 NOTIFICATION SERVICE — Who Am I (versión con protecciones anti-crash)
-
 import 'dart:math';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
-/// Frecuencias de recordatorios
 enum MemoryCadence {
   hourly1,
   hourly2,
@@ -60,14 +60,15 @@ class NotificationsService {
 
   static bool _initialized = false;
 
-  static const _androidChannelId = 'whoami_global';
-  static const _androidChannelName = 'Recordatorios y emergencias';
-  static const _androidChannelDesc =
-      'Canal para notificaciones de recuerdos, mensajes y alertas.';
+  static const String _androidChannelId = 'whoami_global';
+  static const String _androidChannelName = 'Recordatorios y emergencias';
+  static const String _androidChannelDesc =
+      'Canal para recordatorios, mensajes y alertas.';
 
-  // =============================================================
-  // IDs SEGUROS PARA EVITAR CRASH POR COLISIÓN
-  // =============================================================
+  static const String _emergencyChannelId = 'whoami_emergencias';
+  static const String _emergencyChannelName = 'Emergencias Who Am I';
+  static const String _emergencyChannelDesc = 'Alertas urgentes de consultantes';
+
   static int _nextNotificationId = 100000;
 
   static int _safeId() {
@@ -76,50 +77,61 @@ class NotificationsService {
     return _nextNotificationId;
   }
 
-  // =============================================================
-  // LIMITADOR GLOBAL DE NOTIFICACIONES PENDIENTES
-  // (evita que se acumulen cientos y reviente la app)
-  // =============================================================
   static Future<void> _trimPending() async {
     if (kIsWeb) return;
     try {
       final list = await _plugin.pendingNotificationRequests();
-      if (list.length <= 60) return; // límite seguro
+      if (list.length <= 60) return;
 
       final excess = list.length - 60;
       for (var i = 0; i < excess; i++) {
         await _plugin.cancel(list[i].id);
       }
-      debugPrint('🧹 Podadas $excess notificaciones antiguas (quedan 60).');
+      debugPrint('Podadas $excess notificaciones antiguas (quedan 60).');
     } catch (e) {
-      debugPrint('⚠️ Error al podar notificaciones pendientes: $e');
+      debugPrint('Error al podar notificaciones pendientes: $e');
     }
   }
 
-  // =============================================================
-  // Inicialización global
-  // =============================================================
   static Future<void> init() async {
     if (_initialized) return;
 
     try {
       if (kIsWeb) {
-        debugPrint('🌐 Notificaciones locales deshabilitadas en Web');
+        debugPrint('Notificaciones locales deshabilitadas en Web');
         _initialized = true;
         return;
       }
 
-      tz.initializeTimeZones();
+      tzdata.initializeTimeZones();
+      tz.setLocalLocation(tz.getLocation('America/Mexico_City'));
 
       const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
       const iosInit = DarwinInitializationSettings();
       const initSettings =
           InitializationSettings(android: androidInit, iOS: iosInit);
 
-      await _plugin.initialize(initSettings);
+      // ✅ IMPORTANTE: callback cuando el usuario toca la notificación
+      await _plugin.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: (resp) async {
+          final payload = resp.payload;
 
-      // 🔹 Canal principal
-      const androidChannel = AndroidNotificationChannel(
+          if (payload == null) return;
+          if (payload == 'emergency') return;
+
+          // Si viene como uid/docId, reprograma el siguiente
+          if (payload.contains('/')) {
+            await rescheduleNextFromPayload(payload);
+          }
+        },
+      );
+
+      final androidImpl = _plugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+
+      const globalChannel = AndroidNotificationChannel(
         _androidChannelId,
         _androidChannelName,
         description: _androidChannelDesc,
@@ -128,40 +140,32 @@ class NotificationsService {
         enableVibration: true,
       );
 
-      final androidImpl = _plugin
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
-
-      await androidImpl?.createNotificationChannel(androidChannel);
-      await androidImpl?.requestNotificationsPermission();
-
-      // 🔹 Canal de emergencias independiente
-      const emergChannel = AndroidNotificationChannel(
-        'whoami_emergencias',
-        'Emergencias Who Am I',
-        description: 'Alertas urgentes de consultantes',
+      const emergencyChannel = AndroidNotificationChannel(
+        _emergencyChannelId,
+        _emergencyChannelName,
+        description: _emergencyChannelDesc,
         importance: Importance.max,
         playSound: true,
         enableVibration: true,
       );
-      await androidImpl?.createNotificationChannel(emergChannel);
 
-      // 🔹 Permisos iOS
+      await androidImpl?.createNotificationChannel(globalChannel);
+      await androidImpl?.createNotificationChannel(emergencyChannel);
+
+      await androidImpl?.requestNotificationsPermission();
+
       await _plugin
           .resolvePlatformSpecificImplementation<
               IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
 
-      // 🔹 Permisos FCM
       await FirebaseMessaging.instance.requestPermission();
-
-      // 🔹 Escucha mensajes push (app en primer plano)
       FirebaseMessaging.onMessage.listen(_onFirebaseMessage);
 
       _initialized = true;
-      debugPrint('✅ Notificaciones inicializadas correctamente');
+      debugPrint('Notificaciones inicializadas correctamente');
     } catch (e) {
-      debugPrint('⚠️ Error al inicializar notificaciones: $e');
+      debugPrint('Error al inicializar notificaciones: $e');
     }
   }
 
@@ -169,9 +173,6 @@ class NotificationsService {
     if (!_initialized) await init();
   }
 
-  // =============================================================
-  // Notificación inmediata
-  // =============================================================
   static Future<void> showInstant({
     required String title,
     required String body,
@@ -199,7 +200,7 @@ class NotificationsService {
     );
 
     await _plugin.show(
-      _safeId(), // 👈 ID seguro
+      _safeId(),
       title,
       body,
       details,
@@ -207,47 +208,36 @@ class NotificationsService {
     );
   }
 
-  // =============================================================
-  // Sincronización con mensajes FCM (push)
-  // =============================================================
   static Future<void> _onFirebaseMessage(RemoteMessage message) async {
     final notif = message.notification;
     if (notif != null) {
       await showInstant(
-        title: notif.title ?? 'Notificación',
+        title: notif.title ?? 'Notificacion',
         body: notif.body ?? '',
       );
     }
   }
 
-  // =============================================================
-  // Programar recordatorios de memoria (con protecciones)
-  // =============================================================
+  // ============================================================
+  // ✅ CLAVE: SOLO 1 NOTIFICACIÓN por recuerdo (la próxima)
+  // ============================================================
   static Future<void> scheduleForMemory({
-    required String memoryId,
+    required String memoryId, // '$uid/$docId'
     required String title,
-    required DateTime anchorDate,
-    required MemoryCadence cadence,
-    int occurrences = 12,
+    required DateTime anchorDate, // reminder.nextAt (FUTURO)
+    required MemoryCadence cadence, // no se usa para generar lista, pero lo dejamos por compat
   }) async {
     await ensureInitialized();
     if (kIsWeb) return;
 
-    // Limpiar anteriores de ese recuerdo
-    await cancelAllForMemory(memoryId);
-
-    // Limitar programaciones futuras para evitar saturación
-    occurrences = min(occurrences, 6);
+    // ✅ Cancela solo la actual del recuerdo
+    await cancelForMemory(memoryId);
 
     await _trimPending();
 
-    // Si la fecha está en el pasado, arranca desde 1 minuto después
     final now = DateTime.now();
-    var adjustedDate =
+    final adjusted =
         anchorDate.isBefore(now) ? now.add(const Duration(minutes: 1)) : anchorDate;
-
-    final baseId = _baseId(memoryId);
-    final list = _generateOccurrences(adjustedDate, cadence, occurrences);
 
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
@@ -262,39 +252,117 @@ class NotificationsService {
       iOS: DarwinNotificationDetails(),
     );
 
-    for (var i = 0; i < list.length; i++) {
-  try {
-    await _plugin.zonedSchedule(
-      baseId + i,
-      'Recordatorio de recuerdo',
-      title,
-      tz.TZDateTime.from(list[i], tz.local),
-      details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      payload: memoryId,
-      matchDateTimeComponents: null, // <- OK
-      // ❌ uiLocalNotificationDateInterpretation eliminado
-    );
-  } catch (e) {
-    debugPrint('⚠️ Error al programar notificación $i: $e');
-  }
-}
+    final id = _baseIdStable(memoryId);
 
+    try {
+      await _plugin.zonedSchedule(
+        id,
+        'Recordatorio de recuerdo',
+        title,
+        tz.TZDateTime.from(adjusted, tz.local),
+        details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: memoryId,
+        matchDateTimeComponents: null,
+      );
+    } catch (e) {
+      debugPrint('Error al programar notificación: $e');
+    }
 
-    debugPrint('✅ Programadas ${list.length} notificaciones para $memoryId');
+    debugPrint('Programada 1 notificación para $memoryId');
   }
 
-  // =============================================================
-  // Cancelaciones / consultas
-  // =============================================================
+  // ============================================================
+  // ✅ Reprogramar siguiente usando Firestore (cuando tocan notif)
+  // ============================================================
+  static Future<void> rescheduleNextFromPayload(String memoryId) async {
+    try {
+      final parts = memoryId.split('/');
+      if (parts.length != 2) return;
+
+      final uid = parts[0];
+      final docId = parts[1];
+
+      final doc = await FirebaseFirestore.instance
+          .collection('memories')
+          .doc(uid)
+          .collection('user_memories')
+          .doc(docId)
+          .get();
+
+      if (!doc.exists) return;
+
+      final data = doc.data() ?? {};
+      final reminder = data['reminder'];
+
+      if (reminder is! Map) return;
+      if (reminder['enabled'] != true) return;
+
+      final cadenceRaw =
+          (reminder['cadence'] as String?)?.toLowerCase().trim() ?? 'monthly';
+      final cadence = cadenceFromString(cadenceRaw);
+
+      // hora guardada HH:mm
+      final timeStr = (reminder['time'] as String?) ?? '09:00';
+      final timeParts = timeStr.split(':');
+      final hh = int.tryParse(timeParts[0]) ?? 9;
+      final mm = int.tryParse(timeParts.length > 1 ? timeParts[1] : '0') ?? 0;
+
+      final now = DateTime.now();
+
+      // Partimos de "ahora" a la hora elegida
+      DateTime nextAt = DateTime(now.year, now.month, now.day, hh, mm);
+
+      // Si ya pasó, avanza según cadence hasta quedar futuro
+      if (!nextAt.isAfter(now)) {
+        nextAt = _addCadence(nextAt, cadence);
+        while (!nextAt.isAfter(now)) {
+          nextAt = _addCadence(nextAt, cadence);
+        }
+      }
+
+      // Título
+      final text = (data['text'] as String?)?.trim() ?? '';
+      final safeTitle = text.isEmpty ? 'Tu recuerdo' : text;
+
+      // ✅ Guarda nextAt en Firestore para mantener el esquema correcto
+      await FirebaseFirestore.instance
+          .collection('memories')
+          .doc(uid)
+          .collection('user_memories')
+          .doc(docId)
+          .update({
+        'reminder.nextAt': Timestamp.fromDate(nextAt),
+      });
+
+      // ✅ Programa solo 1
+      await scheduleForMemory(
+        memoryId: memoryId,
+        title: safeTitle,
+        anchorDate: nextAt,
+        cadence: cadence,
+      );
+    } catch (e) {
+      debugPrint('Error rescheduleNextFromPayload: $e');
+    }
+  }
+
+  // ============================================================
+  // ✅ Cancelar SOLO 1 notificación por recuerdo
+  // ============================================================
+  static Future<void> cancelForMemory(String memoryId) async {
+    await ensureInitialized();
+    if (kIsWeb) return;
+
+    final id = _baseIdStable(memoryId);
+    await _plugin.cancel(id);
+  }
+
+  // (Opcional) Mantengo este por si lo ocupas en otro lado
   static Future<void> cancelAllForMemory(String memoryId) async {
     await ensureInitialized();
     if (kIsWeb) return;
-    final base = _baseId(memoryId);
-    // antes eran 50; con 20 estamos sobrad@s y evitamos bucles enormes
-    for (var i = 0; i < 20; i++) {
-      await _plugin.cancel(base + i);
-    }
+    await cancelForMemory(memoryId);
   }
 
   static Future<void> cancel(int id) async {
@@ -309,19 +377,17 @@ class NotificationsService {
     await _plugin.cancelAll();
   }
 
-  static Future<List<PendingNotificationRequest>>
-      pendingNotificationRequests() async {
+  static Future<List<PendingNotificationRequest>> pendingNotificationRequests() async {
     await ensureInitialized();
     if (kIsWeb) return [];
     try {
       return await _plugin.pendingNotificationRequests();
     } catch (e) {
-      debugPrint('⚠️ Error al obtener notificaciones pendientes: $e');
+      debugPrint('Error al obtener notificaciones pendientes: $e');
       return [];
     }
   }
 
-  /// Contador de notificaciones pendientes
   static Future<int> getPendingCount() async {
     await ensureInitialized();
     if (kIsWeb) return 0;
@@ -329,14 +395,14 @@ class NotificationsService {
       final pending = await _plugin.pendingNotificationRequests();
       return pending.length;
     } catch (e) {
-      debugPrint('⚠️ No se pudieron obtener notificaciones pendientes: $e');
+      debugPrint('No se pudieron obtener notificaciones pendientes: $e');
       return 0;
     }
   }
 
-  // =============================================================
-  // 🚨 EMERGENCIAS (agrupadas y limitadas)
-  // =============================================================
+  // ============================================================
+  // Emergencias (igual que tu versión)
+  // ============================================================
   static Future<void> showEmergencyAlert({
     required String title,
     required String body,
@@ -349,9 +415,9 @@ class NotificationsService {
     const groupKey = 'emergency_group';
 
     const androidDetails = AndroidNotificationDetails(
-      'whoami_emergencias',
-      'Emergencias Who Am I',
-      channelDescription: 'Alertas urgentes de consultantes',
+      _emergencyChannelId,
+      _emergencyChannelName,
+      channelDescription: _emergencyChannelDesc,
       importance: Importance.max,
       priority: Priority.high,
       playSound: true,
@@ -365,35 +431,26 @@ class NotificationsService {
       iOS: DarwinNotificationDetails(),
     );
 
-    // Notificación individual
     final id = _safeId();
-    await _plugin.show(
-      id,
-      title,
-      body,
-      details,
-      payload: 'emergency',
-    );
+    await _plugin.show(id, title, body, details, payload: 'emergency');
 
-    // Limitar máximo 5 emergencias activas para evitar saturación
     final pending = await _plugin.pendingNotificationRequests();
-    final emergencies =
-        pending.where((n) => n.payload == 'emergency').toList();
+    final emergencies = pending.where((n) => n.payload == 'emergency').toList();
+
     if (emergencies.length > 5) {
       for (var i = 0; i < emergencies.length - 5; i++) {
         await _plugin.cancel(emergencies[i].id);
       }
     }
 
-    // Resumen del grupo
     await _plugin.show(
       0,
-      '🚨 Emergencias activas',
+      'Emergencias activas',
       'Tienes ${min(emergencies.length, 5)} emergencias recientes.',
       const NotificationDetails(
         android: AndroidNotificationDetails(
-          'whoami_emergencias',
-          'Emergencias Who Am I',
+          _emergencyChannelId,
+          _emergencyChannelName,
           channelDescription: 'Resumen de emergencias activas',
           importance: Importance.high,
           priority: Priority.high,
@@ -404,24 +461,28 @@ class NotificationsService {
     );
   }
 
-  // =============================================================
-  // Utilidades internas
-  // =============================================================
-  static int _baseId(String id) {
+  // ============================================================
+  // Helpers
+  // ============================================================
+  static int _baseIdStable(String memoryId) {
+    // memoryId viene como uid/docId
     final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
-    final combined = '$uid-$id';
-    return (combined.hashCode & 0x7fffffff) % 900000 + 100000;
+    final combined = '$uid-$memoryId';
+    final hash = _fnv1a32(combined);
+    return (hash % 900000) + 100000;
   }
 
-  static List<DateTime> _generateOccurrences(
-      DateTime start, MemoryCadence c, int count) {
-    final result = <DateTime>[];
-    var current = start;
-    for (int i = 0; i < count; i++) {
-      current = _addCadence(current, c);
-      result.add(current);
+  static int _fnv1a32(String input) {
+    const int fnvPrime = 16777619;
+    const int offsetBasis = 2166136261;
+
+    int hash = offsetBasis;
+    final units = input.codeUnits;
+    for (final unit in units) {
+      hash ^= unit;
+      hash = (hash * fnvPrime) & 0xFFFFFFFF;
     }
-    return result;
+    return hash & 0x7FFFFFFF;
   }
 
   static DateTime _addCadence(DateTime d, MemoryCadence c) {
@@ -461,19 +522,17 @@ class NotificationsService {
 
   static int _daysInMonth(int year, int month) {
     final first = DateTime(year, month, 1);
-    final next =
-        (month == 12) ? DateTime(year + 1, 1, 1) : DateTime(year, month + 1, 1);
+    final next = (month == 12)
+        ? DateTime(year + 1, 1, 1)
+        : DateTime(year, month + 1, 1);
     return next.difference(first).inDays;
   }
 
-  // =============================================================
-  // TEST GLOBAL
-  // =============================================================
   static Future<void> scheduleTest() async {
     await ensureInitialized();
     await showInstant(
-      title: '🔔 Prueba de Who Am I',
-      body: 'Tu sistema de notificaciones está funcionando 💜',
+      title: 'Prueba de Who Am I',
+      body: 'Tu sistema de notificaciones esta funcionando.',
     );
   }
 }

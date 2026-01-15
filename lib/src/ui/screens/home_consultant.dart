@@ -183,34 +183,102 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
       // ✅ Confirmación visual
       if (!mounted) return;
       showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          backgroundColor: const Color(0xFFFFEAEA),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text(
-            '⚠️ Notificación enviada',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
-          ),
-          content: const Text(
-            'Tu cuidador ha sido notificado con tu ubicación en tiempo real.\n\n'
-            'Mantén la calma, la ayuda está en camino.',
-            style: TextStyle(color: Colors.black87),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              style: TextButton.styleFrom(
-                backgroundColor: Colors.redAccent.withOpacity(0.1),
-                foregroundColor: Colors.black,
+  context: context,
+  builder: (_) {
+    const kEmergencyRed = Color(0xFFFF9FA1);
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: kEmergencyRed, width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            )
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Ícono grande de emergencia
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: kEmergencyRed.withOpacity(0.2),
+                shape: BoxShape.circle,
               ),
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Entendido'),
+              child: const Icon(
+                Icons.warning_amber_rounded,
+                color: kEmergencyRed,
+                size: 48,
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Título
+            const Text(
+              "Alerta enviada",
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: kInk,
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // Mensaje descriptivo
+            const Text(
+              "Tu cuidador ha sido notificado con tu ubicación en tiempo real.\n"
+              "Mantén la calma, la ayuda está en camino.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.3,
+                color: kGrey1,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+
+            const SizedBox(height: 22),
+
+            // Botón "Entendido"
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: kPurple,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  "Entendido",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: kInk,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
-      );
+      ),
+    );
+  },
+);
+
     } catch (e) {
       debugPrint('Error al enviar emergencia: $e');
       if (!mounted) return;

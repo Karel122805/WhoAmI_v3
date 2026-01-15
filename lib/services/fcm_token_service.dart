@@ -1,125 +1,77 @@
+import 'dart:io';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 
-/// =============================================================
-/// SERVICIO CENTRALIZADO DE TOKEN FCM (Who Am I)
-/// =============================================================
-/// - Guarda el token del usuario autenticado en Firestore.
-/// - Actualiza automáticamente si el token cambia.
-/// - Elimina el token cuando el usuario cierra sesión o borra la cuenta.
-/// - Compatible con Android 13–15 y iOS.
-/// =============================================================
 class FCMTokenService {
-  static final _auth = FirebaseAuth.instance;
-  static final _db = FirebaseFirestore.instance;
-  static final _messaging = FirebaseMessaging.instance;
+  static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  static final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  /// =============================================================
-  /// Inicializa y guarda el token del usuario actual
-  /// =============================================================
-  static Future<void> saveCurrentUserToken() async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) {
-        debugPrint('⚠️ No hay usuario autenticado para registrar FCM.');
-        return;
-      }
+  // Colección recomendada:
+  // users/{uid}/fcm_tokens/{token}
+  static CollectionReference<Map<String, dynamic>> _tokensCol(String uid) {
+    return _db.collection('users').doc(uid).collection('fcm_tokens');
+  }
 
-      // 🔹 Solicita permisos de notificación (solo una vez)
-      final settings = await _messaging.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
+  // Pide permiso (iOS y Android 13+), toma token y lo guarda.
+  static Future<void> initAndSaveToken() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
 
-      if (settings.authorizationStatus == AuthorizationStatus.denied) {
-        debugPrint('🚫 Permisos FCM denegados por el usuario.');
-        return;
-      }
+    // 1) Permisos (Android 13+ / iOS)
+    await _messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
 
-      // 🔹 Obtiene token actual
-      final token = await _messaging.getToken();
-      if (token == null) {
-        debugPrint('⚠️ No se pudo obtener el token FCM.');
-        return;
-      }
+    // 2) Obtener token
+    final token = await _messaging.getToken();
+    if (token == null || token.isEmpty) return;
 
-      // 🔹 Guarda o actualiza el token en Firestore
-      await _db.collection('users').doc(user.uid).set({
-        'fcmToken': token,
+    // 3) Guardar token por dispositivo
+    await _tokensCol(user.uid).doc(token).set({
+      'token': token,
+      'platform': Platform.isAndroid ? 'android' : 'ios',
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    // 4) Si el token rota, actualiza Firestore
+    _messaging.onTokenRefresh.listen((newToken) async {
+      final u = _auth.currentUser;
+      if (u == null) return;
+
+      // guarda el nuevo
+      await _tokensCol(u.uid).doc(newToken).set({
+        'token': newToken,
+        'platform': Platform.isAndroid ? 'android' : 'ios',
+        'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      debugPrint('✅ Token FCM guardado correctamente: $token');
-
-      // 🔹 Escucha cambios de token y actualiza automáticamente
-      _messaging.onTokenRefresh.listen((newToken) async {
-        try {
-          await _db.collection('users').doc(user.uid).set({
-            'fcmToken': newToken,
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-          debugPrint('🔁 Token FCM actualizado automáticamente.');
-        } catch (e) {
-          debugPrint('⚠️ Error al actualizar token FCM: $e');
-        }
-      });
-    } catch (e) {
-      debugPrint('❌ Error al guardar token FCM: $e');
-    }
+      // intenta borrar el viejo (el que ya no sirve)
+      await _tokensCol(u.uid).doc(token).delete().catchError((_) {});
+    });
   }
 
-  /// =============================================================
-  /// Limpia el token del usuario actual en Firestore
-  /// =============================================================
+  // Quita ESTE dispositivo de la cuenta (para logout)
+  // No borra “FirebaseMessaging” del sistema; solo desasocia el token de esa cuenta.
+  static Future<void> unregisterCurrentDeviceToken() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final token = await _messaging.getToken();
+    if (token == null || token.isEmpty) return;
+
+    await _tokensCol(user.uid).doc(token).delete().catchError((_) {});
+  }
+
+  // Si todavía quieres conservar un método con tu nombre anterior,
+  // lo dejamos como alias para no romper código viejo.
   static Future<void> clearToken() async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) return;
-
-      await _db.collection('users').doc(user.uid).update({
-        'fcmToken': FieldValue.delete(),
-      });
-
-      debugPrint('🧹 Token FCM eliminado correctamente.');
-    } catch (e) {
-      debugPrint('⚠️ Error al eliminar token FCM: $e');
-    }
-  }
-
-  /// =============================================================
-  /// Obtiene el token FCM actual (sin guardarlo)
-  /// =============================================================
-  static Future<String?> getCurrentToken() async {
-    try {
-      final token = await _messaging.getToken();
-      debugPrint('📲 Token actual: $token');
-      return token;
-    } catch (e) {
-      debugPrint('⚠️ Error al obtener token FCM: $e');
-      return null;
-    }
-  }
-
-  /// =============================================================
-  /// Envía una notificación directa (modo prueba)
-  /// =============================================================
-  static Future<void> sendTestNotification(String targetUid) async {
-    try {
-      final userDoc = await _db.collection('users').doc(targetUid).get();
-      final targetToken = userDoc.data()?['fcmToken'];
-
-      if (targetToken == null) {
-        debugPrint('⚠️ Usuario destino sin token FCM.');
-        return;
-      }
-
-      // 🚀 Solo imprime el token (el envío real se hace desde Cloud Functions)
-      debugPrint('🎯 Token de destino: $targetToken');
-    } catch (e) {
-      debugPrint('⚠️ Error al buscar token destino: $e');
-    }
+    await unregisterCurrentDeviceToken();
   }
 }

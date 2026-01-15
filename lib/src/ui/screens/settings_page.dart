@@ -535,31 +535,34 @@ Future<void> _deleteAccount(BuildContext context) async {
               borderRadius: BorderRadius.circular(28),
             ),
           ),
-          onPressed: () async {
-            try {
-              // 🔹 Eliminar token FCM antes de cerrar sesión
-              await FCMTokenService.clearToken();
+   onPressed: () async {
+  try {
+    // 1) Quitar este dispositivo de la cuenta en Firestore
+    await FCMTokenService.unregisterCurrentDeviceToken();
 
-              // 🔹 Cerrar sesión de Firebase
-              await FirebaseAuth.instance.signOut();
+    // 2) Cerrar sesión
+    await FirebaseAuth.instance.signOut();
 
-              if (!mounted) return;
+    if (!mounted) return;
 
-              // 🔹 Redirigir al login
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/login',
-                (_) => false,
-              );
-            } catch (e) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Error al cerrar sesión: $e'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            }
-          },
+    // 3) Volver al login
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      '/login',
+      (_) => false,
+    );
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error al cerrar sesión: $e'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+},
+
+
           icon: const Icon(Icons.logout),
           label: const Text('Cerrar sesión'),
         ),
