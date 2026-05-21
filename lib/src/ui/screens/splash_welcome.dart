@@ -3,7 +3,6 @@ import '../brand_logo.dart';
 import '../theme.dart';
 import 'choice_start.dart';
 
-// 👇 Importa tu servicio de permisos
 import 'package:whoami_app/services/permission_service.dart';
 
 class SplashWelcome extends StatefulWidget {
@@ -22,15 +21,18 @@ class _SplashWelcomeState extends State<SplashWelcome> {
   }
 
   Future<void> _requestPermissions() async {
-    // Solo pedimos los permisos, nada más
     await PermissionService.requestCameraAndGallery();
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     return MediaQuery(
-      data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.0)),
+      data: MediaQuery.of(context)
+          .copyWith(textScaler: const TextScaler.linear(1.0)),
       child: Scaffold(
+        backgroundColor: colors.pageBackground,
         body: SafeArea(
           child: Center(
             child: ConstrainedBox(
@@ -42,15 +44,18 @@ class _SplashWelcomeState extends State<SplashWelcome> {
                   children: [
                     const BrandLogo(size: 190),
                     const SizedBox(height: 20),
-                    const Text('BIENVENIDO A', style: welcomeKicker),
+                    Text(
+                      'BIENVENIDO A',
+                      style: welcomeKicker(context),
+                    ),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'WhoAmI?',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 36,
                         fontWeight: FontWeight.w800,
-                        color: kInk,
+                        color: colors.textPrimary,
                         height: 1.1,
                       ),
                     ),
@@ -59,9 +64,15 @@ class _SplashWelcomeState extends State<SplashWelcome> {
                       width: 296,
                       height: 56,
                       child: FilledButton(
-                        style: pillBlue(),
-                        onPressed: () => Navigator.pushNamed(context, ChoiceStart.route),
-                        child: const Text('Comenzar'),
+                        style: pillBlue(context),
+                        onPressed: () =>
+                            Navigator.pushNamed(context, ChoiceStart.route),
+                        child: Text(
+                          'Comenzar',
+                          style: TextStyle(
+                            color: colors.primaryButtonText,
+                          ),
+                        ),
                       ),
                     ),
                   ],

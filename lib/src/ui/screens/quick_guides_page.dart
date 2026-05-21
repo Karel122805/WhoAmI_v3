@@ -125,14 +125,24 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
     await _tts.setSpeechRate(0.5);
   }
 
+  // ✅ STOP centralizado (se usa en todos los casos)
+  Future<void> _stopTts() async {
+    try {
+      await _tts.stop();
+    } catch (_) {
+      // Ignorar errores del motor de TTS para no romper la navegación
+    }
+  }
+
   // Cargar categoría
-  void _loadCategory(String cat) async {
-    await _tts.stop();
+  Future<void> _loadCategory(String cat) async {
+    await _stopTts();
     _selected = cat;
 
     final pool = _guidesByCategory[cat]!;
     final shuffled = List<String>.from(pool)..shuffle(_rnd);
 
+    if (!mounted) return;
     setState(() {
       _visible = shuffled;
       _showCategoryMenu = false;
@@ -140,28 +150,32 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
   }
 
   Future<void> _speak(String text) async {
-    await _tts.stop();
+    await _stopTts();
     await _tts.speak(text);
   }
 
   @override
   void dispose() {
-    _tts.stop();
+    _stopTts();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Guías"),
-        centerTitle: true,
-        elevation: 0,
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (didPop) async {
+        // ✅ Si el usuario sale con el botón atrás/gesto, detenemos el audio
+        await _stopTts();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("Guías"),
+          centerTitle: true,
+          elevation: 0,
+        ),
+        body: _showCategoryMenu ? _buildCategoryMenu() : _buildGuidesView(),
       ),
-
-      body: _showCategoryMenu
-          ? _buildCategoryMenu()    // ← Vista 1 (categorías)
-          : _buildGuidesView(),     // ← Vista 2 (guías)
     );
   }
 
@@ -240,9 +254,15 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () => setState(() => _showCategoryMenu = true),
+              onPressed: () async {
+                // ✅ al volver al menú, detenemos el TTS
+                await _stopTts();
+                if (!mounted) return;
+                setState(() => _showCategoryMenu = true);
+              },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE9D8FF), // violeta pastel claro
+                backgroundColor:
+                    const Color(0xFFE9D8FF), // violeta pastel claro
                 foregroundColor: const Color(0xFF6B2FAF), // texto morado
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(

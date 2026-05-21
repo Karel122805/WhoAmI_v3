@@ -1,5 +1,6 @@
 // lib/src/ui/screens/register_password_page.dart
 import 'package:flutter/material.dart';
+
 import '../brand_logo.dart';
 import '../theme.dart';
 import 'register_role_page.dart';
@@ -25,6 +26,8 @@ class _RegisterPasswordPageState extends State<RegisterPasswordPage> {
   String _passLabel = 'Vacía';
   Color _passColor = Colors.grey;
 
+  bool _didRedirect = false;
+
   String? _emailRule(String? v) {
     final s = v?.trim() ?? '';
     if (s.isEmpty) return 'Requerido';
@@ -36,9 +39,15 @@ class _RegisterPasswordPageState extends State<RegisterPasswordPage> {
     final s = v ?? '';
     if (s.isEmpty) return 'Requerido';
     if (s.length < 8) return 'Debe tener mínimo 8 caracteres';
-    if (!RegExp(r'[A-Z]').hasMatch(s)) return 'Debe incluir al menos una mayúscula';
-    if (!RegExp(r'[a-z]').hasMatch(s)) return 'Debe incluir al menos una letra minúscula';
-    if (!RegExp(r'[0-9]').hasMatch(s)) return 'Debe incluir al menos un número';
+    if (!RegExp(r'[A-Z]').hasMatch(s)) {
+      return 'Debe incluir al menos una mayúscula';
+    }
+    if (!RegExp(r'[a-z]').hasMatch(s)) {
+      return 'Debe incluir al menos una letra minúscula';
+    }
+    if (!RegExp(r'[0-9]').hasMatch(s)) {
+      return 'Debe incluir al menos un número';
+    }
     if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(s)) {
       return 'Debe incluir al menos un símbolo o carácter especial';
     }
@@ -104,27 +113,74 @@ class _RegisterPasswordPageState extends State<RegisterPasswordPage> {
   }
 
   @override
+  void dispose() {
+    _email.dispose();
+    _pass.dispose();
+    _pass2.dispose();
+    super.dispose();
+  }
+
+  void _maybeSkipForGoogle(Map prev) {
+    final fromGoogle = (prev['fromGoogle'] == true);
+    if (!fromGoogle) return;
+    if (_didRedirect) return;
+    _didRedirect = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(
+        context,
+        RegisterRolePage.route,
+        arguments: {
+          ...prev,
+        },
+      );
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final prev = (ModalRoute.of(context)?.settings.arguments as Map?) ?? {};
+    final colors = context.appColors;
+
+    _maybeSkipForGoogle(prev);
+
+    final fromGoogle = (prev['fromGoogle'] == true);
+    if (fromGoogle) {
+      return MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: const TextScaler.linear(1.0)),
+        child: Scaffold(
+          backgroundColor: colors.pageBackground,
+          body: Center(
+            child: CircularProgressIndicator(
+              color: colors.primaryButton,
+            ),
+          ),
+        ),
+      );
+    }
 
     return MediaQuery(
-      data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.0)),
+      data: MediaQuery.of(context)
+          .copyWith(textScaler: const TextScaler.linear(1.0)),
       child: Scaffold(
+        backgroundColor: colors.pageBackground,
         appBar: AppBar(
-          backgroundColor: Colors.white,
+          backgroundColor: colors.pageBackground,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: kInk),
+            icon: Icon(Icons.arrow_back, color: colors.textPrimary),
             onPressed: () => Navigator.maybePop(context),
           ),
           centerTitle: true,
-          title: const Text(
+          title: Text(
             'Regístrate',
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
-              color: kInk,
+              color: colors.textPrimary,
             ),
           ),
         ),
@@ -162,8 +218,12 @@ class _RegisterPasswordPageState extends State<RegisterPasswordPage> {
                         validator: _passRule,
                         onChanged: _updatePasswordStrength,
                         suffixIcon: IconButton(
-                          onPressed: () => setState(() => _obscure1 = !_obscure1),
-                          icon: Icon(_obscure1 ? Icons.visibility_off : Icons.visibility),
+                          onPressed: () =>
+                              setState(() => _obscure1 = !_obscure1),
+                          icon: Icon(
+                            _obscure1 ? Icons.visibility_off : Icons.visibility,
+                            color: colors.textSecondary,
+                          ),
                           tooltip: _obscure1 ? 'Mostrar' : 'Ocultar',
                         ),
                       ),
@@ -176,9 +236,9 @@ class _RegisterPasswordPageState extends State<RegisterPasswordPage> {
                       ),
 
                       const SizedBox(height: 10),
-                      const Text(
+                      Text(
                         'Debe tener al menos 8 caracteres, incluir letras, una mayúscula, números y un símbolo.',
-                        style: TextStyle(fontSize: 12, color: kGrey1),
+                        style: TextStyle(fontSize: 12, color: colors.textSecondary),
                         textAlign: TextAlign.left,
                       ),
 
@@ -195,8 +255,12 @@ class _RegisterPasswordPageState extends State<RegisterPasswordPage> {
                           return null;
                         },
                         suffixIcon: IconButton(
-                          onPressed: () => setState(() => _obscure2 = !_obscure2),
-                          icon: Icon(_obscure2 ? Icons.visibility_off : Icons.visibility),
+                          onPressed: () =>
+                              setState(() => _obscure2 = !_obscure2),
+                          icon: Icon(
+                            _obscure2 ? Icons.visibility_off : Icons.visibility,
+                            color: colors.textSecondary,
+                          ),
                           tooltip: _obscure2 ? 'Mostrar' : 'Ocultar',
                         ),
                       ),
@@ -207,7 +271,7 @@ class _RegisterPasswordPageState extends State<RegisterPasswordPage> {
                           width: 296,
                           height: 56,
                           child: FilledButton(
-                            style: pillBlue(),
+                            style: pillBlue(context),
                             onPressed: () {
                               if (!_formKey.currentState!.validate()) return;
                               Navigator.pushNamed(
@@ -220,7 +284,12 @@ class _RegisterPasswordPageState extends State<RegisterPasswordPage> {
                                 },
                               );
                             },
-                            child: const Text('Siguiente'),
+                            child: Text(
+                              'Siguiente',
+                              style: TextStyle(
+                                color: colors.primaryButtonText,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -244,10 +313,10 @@ class _FieldLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w600,
-          color: kInk,
+          color: context.appColors.textPrimary,
         ),
       );
 }
@@ -273,6 +342,8 @@ class _FieldBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     return TextFormField(
       controller: controller,
       obscureText: obscure,
@@ -286,12 +357,14 @@ class _FieldBox extends StatelessWidget {
         hintText: '',
         suffixIcon: suffixIcon,
       ),
-      style: const TextStyle(fontSize: 16, color: kInk),
+      style: TextStyle(
+        fontSize: 16,
+        color: colors.textPrimary,
+      ),
     );
   }
 }
 
-// ====== Barra de fuerza de contraseña ======
 class _PasswordStrengthBar extends StatelessWidget {
   const _PasswordStrengthBar({
     required this.score,
@@ -305,7 +378,9 @@ class _PasswordStrengthBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     final value = (score.clamp(0, 5)) / 5.0;
+
     return Row(
       children: [
         Expanded(
@@ -314,7 +389,7 @@ class _PasswordStrengthBar extends StatelessWidget {
             child: LinearProgressIndicator(
               value: value == 0 ? 0.02 : value,
               minHeight: 10,
-              backgroundColor: const Color(0xFFEAEAEA),
+              backgroundColor: colors.border,
               valueColor: AlwaysStoppedAnimation<Color>(color),
             ),
           ),

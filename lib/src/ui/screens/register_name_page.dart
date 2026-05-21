@@ -1,6 +1,7 @@
 // lib/src/ui/screens/register_name_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../brand_logo.dart';
 import '../theme.dart';
 import 'register_password_page.dart';
@@ -22,6 +23,13 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
   DateTime? _birthday;
   String? _birthdayError;
 
+  bool _fromGoogle = false;
+  String? _uid;
+  String? _email;
+  String? _photoURL;
+
+  bool _argsLoaded = false;
+
   String _fmt(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
@@ -33,14 +41,12 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
     final t = _today;
     final age = t.year -
         date.year -
-        ((t.month < date.month ||
-                (t.month == date.month && t.day < date.day))
+        ((t.month < date.month || (t.month == date.month && t.day < date.day))
             ? 1
             : 0);
     return age >= 18;
   }
 
-  // ✅ Valida y convierte "dd/MM/yyyy" a una fecha real
   DateTime? _parseDob(String s) {
     final p = s.split('/');
     if (p.length != 3) return null;
@@ -56,7 +62,6 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
 
     try {
       final dt = DateTime(y, m, d);
-      // Confirma que realmente exista (por ejemplo 31/02 no existe)
       if (dt.day == d && dt.month == m && dt.year == y) return dt;
     } catch (_) {}
     return null;
@@ -91,13 +96,35 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
     }
   }
 
+  void _loadArgsIfNeeded() {
+    if (_argsLoaded) return;
+    _argsLoaded = true;
+
+    final args = (ModalRoute.of(context)?.settings.arguments as Map?) ?? {};
+    _fromGoogle = (args['fromGoogle'] == true);
+    _uid = args['uid'] as String?;
+    _email = args['email'] as String?;
+    _photoURL = args['photoURL'] as String?;
+
+    final first = (args['firstName'] as String?)?.trim() ?? '';
+    final last = (args['lastName'] as String?)?.trim() ?? '';
+
+    if (_nombre.text.trim().isEmpty && first.isNotEmpty) _nombre.text = first;
+    if (_apellidos.text.trim().isEmpty && last.isNotEmpty) {
+      _apellidos.text = last;
+    }
+
+    setState(() {});
+  }
+
   void _next() {
     final validForm = _formKey.currentState!.validate();
 
-    // 🔎 Validación estricta de la fecha
     final dob = _parseDob(_dobCtrl.text);
     if (dob == null) {
-      setState(() => _birthdayError = 'Fecha inválida. Usa el formato dd/mm/aaaa');
+      setState(
+        () => _birthdayError = 'Fecha inválida. Usa el formato dd/mm/aaaa',
+      );
       return;
     }
     if (!_isAdult(dob)) {
@@ -119,6 +146,10 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
         'nombre': _nombre.text.trim(),
         'apellidos': _apellidos.text.trim(),
         'birthday': _birthday!.toIso8601String(),
+        'fromGoogle': _fromGoogle,
+        'uid': _uid,
+        'email': _email,
+        'photoURL': _photoURL,
       },
     );
   }
@@ -133,25 +164,31 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
 
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadArgsIfNeeded());
+
+    final colors = context.appColors;
+    final title = _fromGoogle ? 'Completa tu perfil' : 'Regístrate';
+
     return MediaQuery(
-      data:
-          MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.0)),
+      data: MediaQuery.of(context)
+          .copyWith(textScaler: const TextScaler.linear(1.0)),
       child: Scaffold(
+        backgroundColor: colors.pageBackground,
         appBar: AppBar(
-          backgroundColor: Colors.white,
+          backgroundColor: colors.pageBackground,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: kInk),
+            icon: Icon(Icons.arrow_back, color: colors.textPrimary),
             onPressed: () => Navigator.maybePop(context),
           ),
           centerTitle: true,
-          title: const Text(
-            'Regístrate',
+          title: Text(
+            title,
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
-              color: kInk,
+              color: colors.textPrimary,
             ),
           ),
         ),
@@ -170,12 +207,14 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
                       const Align(child: BrandLogo(size: 170)),
                       const SizedBox(height: 22),
 
-                      // ===== Campo Nombre =====
                       const _FieldLabel('Nombre'),
                       const SizedBox(height: 6),
                       TextFormField(
                         controller: _nombre,
-                        decoration: const InputDecoration(hintText: 'Tu nombre'),
+                        style: TextStyle(color: colors.textPrimary),
+                        decoration: const InputDecoration(
+                          hintText: 'Tu nombre',
+                        ),
                         validator: (v) => (v == null || v.trim().isEmpty)
                             ? 'El nombre es obligatorio'
                             : null,
@@ -183,13 +222,14 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
 
                       const SizedBox(height: 14),
 
-                      // ===== Campo Apellidos =====
                       const _FieldLabel('Apellidos'),
                       const SizedBox(height: 6),
                       TextFormField(
                         controller: _apellidos,
-                        decoration:
-                            const InputDecoration(hintText: 'Tus apellidos'),
+                        style: TextStyle(color: colors.textPrimary),
+                        decoration: const InputDecoration(
+                          hintText: 'Tus apellidos',
+                        ),
                         validator: (v) => (v == null || v.trim().isEmpty)
                             ? 'Los apellidos son obligatorios'
                             : null,
@@ -197,23 +237,26 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
 
                       const SizedBox(height: 14),
 
-                      // ===== Fecha de nacimiento =====
                       const _FieldLabel('Fecha de nacimiento'),
                       const SizedBox(height: 6),
                       TextFormField(
                         controller: _dobCtrl,
                         keyboardType: TextInputType.number,
                         onChanged: _onDobChanged,
+                        style: TextStyle(color: colors.textPrimary),
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly,
                           LengthLimitingTextInputFormatter(8),
-                          _DateSlashFormatter(),
+                          const _DateSlashFormatter(),
                         ],
                         decoration: InputDecoration(
                           hintText: 'dd/mm/aaaa',
                           suffixIcon: IconButton(
                             tooltip: 'Elegir en calendario',
-                            icon: const Icon(Icons.calendar_today),
+                            icon: Icon(
+                              Icons.calendar_today,
+                              color: colors.textSecondary,
+                            ),
                             onPressed: _pickDob,
                           ),
                         ),
@@ -223,22 +266,28 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
                           padding: const EdgeInsets.only(top: 6),
                           child: Text(
                             _birthdayError!,
-                            style: const TextStyle(
-                                color: Colors.red, fontSize: 12),
+                            style: TextStyle(
+                              color: colors.emergency,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
 
                       const SizedBox(height: 28),
 
-                      // ===== Botón Siguiente =====
                       Align(
                         child: SizedBox(
                           width: 296,
                           height: 56,
                           child: FilledButton(
-                            style: pillBlue(),
+                            style: pillBlue(context),
                             onPressed: _next,
-                            child: const Text('Siguiente'),
+                            child: Text(
+                              'Siguiente',
+                              style: TextStyle(
+                                color: colors.primaryButtonText,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -263,22 +312,22 @@ class _FieldLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w600,
-          color: kInk,
+          color: context.appColors.textPrimary,
         ),
       );
 }
 
-/// Inserta "/" automáticamente al escribir una fecha dd/MM/aaaa.
-/// Ejemplo: 1 2 0 9 2 0 0 5 -> 12/09/2005
 class _DateSlashFormatter extends TextInputFormatter {
   const _DateSlashFormatter();
 
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, TextEditingValue newValue) {
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     var digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.length > 8) digits = digits.substring(0, 8);
 

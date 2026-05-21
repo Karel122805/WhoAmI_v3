@@ -35,21 +35,33 @@ class _PatientsListPageState extends State<PatientsListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     final q = _searchCtrl.text.trim().toLowerCase();
 
     return MediaQuery(
-      data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1)),
+      data: MediaQuery.of(context).copyWith(
+        textScaler: const TextScaler.linear(1),
+      ),
       child: Scaffold(
-        backgroundColor: Theme.of(context).colorScheme.surface,
+        backgroundColor: colors.pageBackground,
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('Lista de pacientes'),
-          backgroundColor: Colors.white,
-          surfaceTintColor: Colors.white,
-          elevation: 0.5,
+          title: Text(
+            'Lista de pacientes',
+            style: TextStyle(
+              color: colors.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          backgroundColor: colors.pageBackground,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
           leading: IconButton(
             onPressed: () => Navigator.maybePop(context),
-            icon: Icon(Icons.arrow_back, color: Theme.of(context).colorScheme.onSurface),
+            icon: Icon(
+              Icons.arrow_back,
+              color: colors.textPrimary,
+            ),
           ),
         ),
         body: SafeArea(
@@ -60,32 +72,36 @@ class _PatientsListPageState extends State<PatientsListPage> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    // ===== Buscador + botón (+) =====
                     Row(
                       children: [
                         Expanded(
                           child: TextField(
                             controller: _searchCtrl,
+                            style: TextStyle(color: colors.textPrimary),
                             decoration: InputDecoration(
                               hintText: 'Buscar',
+                              hintStyle: TextStyle(color: colors.textSecondary),
                               suffixIcon: _searchCtrl.text.isNotEmpty
                                   ? IconButton(
-                                      icon: const Icon(Icons.close),
+                                      icon: Icon(
+                                        Icons.close,
+                                        color: colors.textSecondary,
+                                      ),
                                       onPressed: () => _searchCtrl.clear(),
                                     )
                                   : null,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
                               ),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                             ),
                           ),
                         ),
                         const SizedBox(width: 10),
                         IconButton.filled(
                           style: IconButton.styleFrom(
-                            backgroundColor: kPurple,
-                            foregroundColor: kInk,
+                            backgroundColor: colors.secondaryButton,
+                            foregroundColor: colors.secondaryButtonText,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
@@ -95,6 +111,7 @@ class _PatientsListPageState extends State<PatientsListPage> {
                               context,
                               RegisterPatientPage.route,
                             );
+
                             if (result == true && mounted) {
                               await showDialog(
                                 context: context,
@@ -111,26 +128,36 @@ class _PatientsListPageState extends State<PatientsListPage> {
                       ],
                     ),
                     const SizedBox(height: 12),
-
-                    // ===== Lista de pacientes =====
                     Expanded(
-                      child: StreamBuilder<List<DocumentSnapshot<Map<String, dynamic>>>>(
+                      child: StreamBuilder<
+                          List<DocumentSnapshot<Map<String, dynamic>>>>(
                         stream: _svc.streamPatientsOfCaregiver(caregiverId),
                         builder: (context, snap) {
                           if (snap.connectionState == ConnectionState.waiting) {
-                            return const Center(child: CircularProgressIndicator());
+                            return Center(
+                              child: CircularProgressIndicator(
+                                color: colors.primaryButton,
+                              ),
+                            );
                           }
+
                           if (snap.hasError) {
                             return Center(
                               child: Padding(
                                 padding: const EdgeInsets.all(16),
-                                child: Text('Error: ${snap.error}'),
+                                child: Text(
+                                  'Error: ${snap.error}',
+                                  style: TextStyle(color: colors.textPrimary),
+                                  textAlign: TextAlign.center,
+                                ),
                               ),
                             );
                           }
 
                           var docs = (snap.data ?? [])
-                              .where((d) => (d.data()?['role'] ?? '') == 'Consultante')
+                              .where(
+                                (d) => (d.data()?['role'] ?? '') == 'Consultante',
+                              )
                               .toList();
 
                           docs.sort((a, b) {
@@ -150,20 +177,31 @@ class _PatientsListPageState extends State<PatientsListPage> {
                             docs = docs.where((d) {
                               final data = d.data() ?? {};
                               final name = ((data['displayName'] ??
-                                      '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}')
-                                  .toString()
-                                  .toLowerCase());
+                                          '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}')
+                                      .toString()
+                                      .toLowerCase())
+                                  .trim();
                               return name.contains(q);
                             }).toList();
                           }
 
                           if (docs.isEmpty) {
-                            return const Center(child: Text('Sin pacientes'));
+                            return Center(
+                              child: Text(
+                                'Sin pacientes',
+                                style: TextStyle(
+                                  color: colors.textSecondary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            );
                           }
 
                           return ListView.separated(
                             itemCount: docs.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 8),
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 8),
                             itemBuilder: (context, i) {
                               final data = docs[i].data()!;
                               final patientId = docs[i].id;
@@ -179,8 +217,10 @@ class _PatientsListPageState extends State<PatientsListPage> {
                                 onRemove: () async {
                                   final ok = await showDialog<bool>(
                                     context: context,
-                                    builder: (ctx) => _ConfirmRemoveDialog(name: name),
+                                    builder: (ctx) =>
+                                        _ConfirmRemoveDialog(name: name),
                                   );
+
                                   if (ok != true) return;
 
                                   try {
@@ -192,7 +232,7 @@ class _PatientsListPageState extends State<PatientsListPage> {
                                     if (mounted) {
                                       await showDialog(
                                         context: context,
-                                        builder: (ctx) => _SuccessDialog(
+                                        builder: (ctx) => const _SuccessDialog(
                                           title: 'Hecho',
                                           message: 'Paciente desvinculado.',
                                         ),
@@ -239,31 +279,37 @@ class _PatientsListPageState extends State<PatientsListPage> {
   }
 }
 
-// ===== DIALOGO DE CONFIRMACION =====
 class _ConfirmRemoveDialog extends StatelessWidget {
   final String name;
   const _ConfirmRemoveDialog({required this.name});
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     return AlertDialog(
-      backgroundColor: const Color(0xFFF4EDFB),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text(
+      backgroundColor: colors.cardBackground,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      title: Text(
         'Desvincular paciente',
-        style: TextStyle(color: kInk, fontWeight: FontWeight.w700),
+        style: TextStyle(
+          color: colors.textPrimary,
+          fontWeight: FontWeight.w700,
+        ),
       ),
       content: Text(
         '¿Quitar a "$name" de tu lista?\nPodrás vincularlo de nuevo después.',
-        style: const TextStyle(color: kInk),
+        style: TextStyle(color: colors.textPrimary),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, false),
-          child: const Text(
+          child: Text(
             'Cancelar',
             style: TextStyle(
-              color: Color(0xFF6C4FA1), // 💜 Morado fuerte exacto de la segunda imagen
+              color: colors.secondaryButton,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -271,8 +317,8 @@ class _ConfirmRemoveDialog extends StatelessWidget {
         Center(
           child: FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFFFB3B3), // rojo pastel
-              foregroundColor: kInk,
+              backgroundColor: colors.emergency,
+              foregroundColor: colors.emergencyText,
               minimumSize: const Size(160, 48),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(30),
@@ -287,27 +333,47 @@ class _ConfirmRemoveDialog extends StatelessWidget {
   }
 }
 
-// ===== DIALOGO DE EXITO =====
 class _SuccessDialog extends StatelessWidget {
   final String title;
   final String message;
-  const _SuccessDialog({required this.title, required this.message});
+  const _SuccessDialog({
+    required this.title,
+    required this.message,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     return AlertDialog(
-      backgroundColor: const Color(0xFFF4EDFB),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Text(title, style: const TextStyle(color: kInk, fontWeight: FontWeight.w700)),
-      content: Text(message, style: const TextStyle(color: kInk)),
+      backgroundColor: colors.cardBackground,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: colors.textPrimary,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      content: Text(
+        message,
+        style: TextStyle(color: colors.textPrimary),
+      ),
       actions: [
         Center(
           child: FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: kPurple,
-              foregroundColor: kInk,
-              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              backgroundColor: colors.secondaryButton,
+              foregroundColor: colors.secondaryButtonText,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 30,
+                vertical: 12,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(30),
+              ),
             ),
             onPressed: () => Navigator.pop(context),
             child: const Text('Aceptar'),
@@ -318,7 +384,6 @@ class _SuccessDialog extends StatelessWidget {
   }
 }
 
-// ===== FILA DE PACIENTE =====
 class _PatientRow extends StatefulWidget {
   const _PatientRow({
     required this.name,
@@ -339,6 +404,7 @@ class _PatientRowState extends State<_PatientRow> {
 
   Future<void> _handleRemove() async {
     if (_busy) return;
+
     setState(() => _busy = true);
     try {
       await widget.onRemove();
@@ -349,12 +415,23 @@ class _PatientRowState extends State<_PatientRow> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.cardBackground,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.black12),
+        border: Border.all(color: colors.border),
+        boxShadow: context.isDark
+            ? []
+            : [
+                BoxShadow(
+                  color: colors.textPrimary.withValues(alpha: 0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
       ),
       child: Row(
         children: [
@@ -362,25 +439,44 @@ class _PatientRowState extends State<_PatientRow> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                Text(
+                  widget.name,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                    color: colors.textPrimary,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 if (widget.subtitle.isNotEmpty)
-                  Text(widget.subtitle, style: const TextStyle(color: Colors.black54)),
+                  Text(
+                    widget.subtitle,
+                    style: TextStyle(color: colors.textSecondary),
+                  ),
               ],
             ),
           ),
           FilledButton.icon(
             onPressed: _busy ? null : _handleRemove,
             icon: _busy
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: colors.emergencyText,
+                    ),
+                  )
                 : const Icon(Icons.link_off),
             label: Text(_busy ? 'Quitando…' : 'Desvincular'),
             style: FilledButton.styleFrom(
               minimumSize: const Size(150, 44),
-              backgroundColor: const Color(0xFFFFB3B3),
-              foregroundColor: Colors.black87,
+              backgroundColor: colors.emergency,
+              foregroundColor: colors.emergencyText,
               textStyle: const TextStyle(fontWeight: FontWeight.w700),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(30),
+              ),
             ),
           ),
         ],

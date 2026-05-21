@@ -5,7 +5,6 @@ import 'package:geolocator/geolocator.dart';
 
 // Estilos y componentes
 import '../theme.dart';
-import 'settings_page.dart';
 import '../user_avatar.dart';
 
 // Vistas
@@ -15,7 +14,6 @@ import 'game_page.dart' as games;
 import 'motivational_phrases_page.dart';
 import 'notifications_page.dart';
 import 'assistant_page.dart';
-
 
 // Servicios
 import 'package:whoami_app/services/memories_scheduler.dart';
@@ -68,12 +66,15 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
       if (data != null &&
           data['caregiverId'] != null &&
           data['caregiverId'] != '') {
+        if (!mounted) return;
         setState(() => _hasCaregiver = true);
       } else {
+        if (!mounted) return;
         setState(() => _hasCaregiver = false);
       }
     } catch (e) {
       debugPrint('Error comprobando cuidador: $e');
+      if (!mounted) return;
       setState(() => _hasCaregiver = false);
     }
   }
@@ -116,6 +117,7 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
       final caregiverId = data['caregiverId'];
 
       if (caregiverId == null || caregiverId.isEmpty) {
+        if (!mounted) return;
         setState(() => _hasCaregiver = false);
         return;
       }
@@ -180,117 +182,136 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
         body: '$name necesita ayuda.',
       );
 
-      // ✅ Confirmación visual
+      // ✅ Confirmación visual adaptada al tema
       if (!mounted) return;
+
+      final colors = context.appColors;
+      final dialogBg = colors.elevatedCard;
+      final onBg = colors.textPrimary;
+      final onBgMuted = colors.textSecondary;
+      final emergencyBorder =
+          context.isDark ? const Color(0xFFD4767B) : const Color(0xFFFF9FA1);
+      final emergencyFill =
+          context.isDark ? const Color(0xFF4B2A30) : const Color(0xFFFFE0E2);
+      final emergencyIcon =
+          context.isDark ? const Color(0xFFFFA6AC) : const Color(0xFFFF7E86);
+
       showDialog(
-  context: context,
-  builder: (_) {
-    const kEmergencyRed = Color(0xFFFF9FA1);
-
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: kEmergencyRed, width: 2),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            )
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Ícono grande de emergencia
-            Container(
-              padding: const EdgeInsets.all(14),
+        context: context,
+        builder: (_) {
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding:
+                const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: Container(
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: kEmergencyRed.withOpacity(0.2),
-                shape: BoxShape.circle,
+                color: dialogBg,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: emergencyBorder, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: context.isDark
+                        ? Colors.black.withOpacity(0.28)
+                        : Colors.black.withOpacity(0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  )
+                ],
               ),
-              child: const Icon(
-                Icons.warning_amber_rounded,
-                color: kEmergencyRed,
-                size: 48,
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Título
-            const Text(
-              "Alerta enviada",
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: kInk,
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Mensaje descriptivo
-            const Text(
-              "Tu cuidador ha sido notificado con tu ubicación en tiempo real.\n"
-              "Mantén la calma, la ayuda está en camino.",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 15,
-                height: 1.3,
-                color: kGrey1,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-
-            const SizedBox(height: 22),
-
-            // Botón "Entendido"
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: kPurple,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: emergencyFill,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.warning_amber_rounded,
+                      color: emergencyIcon,
+                      size: 48,
+                    ),
                   ),
-                  elevation: 0,
-                ),
-                onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  "Entendido",
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: kInk,
+                  const SizedBox(height: 16),
+                  Text(
+                    "Alerta enviada",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: onBg,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 12),
+                  Text(
+                    "Tu cuidador ha sido notificado con tu ubicación en tiempo real.\n"
+                    "Mantén la calma, la ayuda está en camino.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1.3,
+                      color: onBgMuted,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: context.isDark
+                            ? colors.secondaryButton
+                            : kPurple,
+                        foregroundColor: context.isDark
+                            ? colors.secondaryButtonText
+                            : Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 0,
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text(
+                        "Entendido",
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  },
-);
-
+          );
+        },
+      );
     } catch (e) {
       debugPrint('Error al enviar emergencia: $e');
       if (!mounted) return;
+
+      final colors = context.appColors;
+
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          title: const Text('Error'),
-          content: Text('Ocurrió un error al enviar la alerta:\n$e'),
+          backgroundColor: colors.elevatedCard,
+          title: Text(
+            'Error',
+            style: TextStyle(color: colors.textPrimary),
+          ),
+          content: Text(
+            'Ocurrió un error al enviar la alerta:\n$e',
+            style: TextStyle(color: colors.textPrimary),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cerrar'),
+              child: Text(
+                'Cerrar',
+                style: TextStyle(color: colors.primaryButton),
+              ),
             ),
           ],
         ),
@@ -303,162 +324,185 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
   /// =============================================================
   @override
   Widget build(BuildContext context) {
-    return MediaQuery(
-      data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1)),
-      child: Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // Barra superior
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            IconButton(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) => const SettingsPage()),
-                                );
-                              },
-                              icon: const Icon(Icons.settings, color: kInk, size: 28),
+    final colors = context.appColors;
+
+    return Scaffold(
+      backgroundColor: colors.pageBackground,
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Barra superior
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          IconButton(
+                            onPressed: () =>
+                                Navigator.pushNamed(context, '/settings'),
+                            icon: Icon(
+                              Icons.settings,
+                              color: colors.textPrimary,
+                              size: 28,
                             ),
-                            _NotificationBell(
-                              count: _notifCount,
-                              loading: _loadingNotif,
-                              onTap: _openNotifications,
-                            ),
-                          ],
+                          ),
+                          _NotificationBell(
+                            count: _notifCount,
+                            loading: _loadingNotif,
+                            onTap: _openNotifications,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const UserAvatar(radius: 60),
+                    const SizedBox(height: 12),
+
+                    // Nombre
+                    StreamBuilder<User?>(
+                      stream: FirebaseAuth.instance.userChanges(),
+                      builder: (context, authSnap) {
+                        final user =
+                            authSnap.data ?? FirebaseAuth.instance.currentUser;
+                        if (user == null) return const SizedBox();
+                        final uid = user.uid;
+
+                        return StreamBuilder<
+                            DocumentSnapshot<Map<String, dynamic>>>(
+                          stream: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(uid)
+                              .snapshots(),
+                          builder: (context, docSnap) {
+                            String name = 'Usuario';
+                            if (docSnap.hasData &&
+                                docSnap.data!.data() != null) {
+                              final data = docSnap.data!.data()!;
+                              final first =
+                                  (data['firstName'] as String?)?.trim() ?? '';
+                              final last =
+                                  (data['lastName'] as String?)?.trim() ?? '';
+                              final fsName = [first, last]
+                                  .where((e) => e.isNotEmpty)
+                                  .join(' ');
+                              if (fsName.isNotEmpty) name = fsName;
+                            }
+
+                            return Text(
+                              'Bienvenido $name',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.w700,
+                                color: colors.textPrimary,
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+
+                    const SizedBox(height: 8),
+                    Text(
+                      'Selecciona una opción',
+                      style: TextStyle(color: colors.textSecondary),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Botones principales
+                    _PillButton(
+                      color: context.isDark
+                          ? colors.primaryButton
+                          : kBlue,
+                      icon: Icons.menu_book_outlined,
+                      text: 'Consejos',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TipsPage()),
+                      ),
+                    ),
+                    _PillButton(
+                      color: context.isDark
+                          ? colors.primaryButton
+                          : kBlue,
+                      icon: Icons.auto_stories_outlined,
+                      text: 'Frases',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const MotivationalPhrasesPage(),
                         ),
                       ),
-
-                      const UserAvatar(radius: 60),
-                      const SizedBox(height: 12),
-
-                      // Nombre
-                      StreamBuilder<User?>(
-                        stream: FirebaseAuth.instance.userChanges(),
-                        builder: (context, authSnap) {
-                          final user = authSnap.data ?? FirebaseAuth.instance.currentUser;
-                          if (user == null) return const SizedBox();
-                          final uid = user.uid;
-
-                          return StreamBuilder<
-                              DocumentSnapshot<Map<String, dynamic>>>(
-                            stream: FirebaseFirestore.instance
-                                .collection('users')
-                                .doc(uid)
-                                .snapshots(),
-                            builder: (context, docSnap) {
-                              String name = 'Usuario';
-                              if (docSnap.hasData && docSnap.data!.data() != null) {
-                                final data = docSnap.data!.data()!;
-                                final first =
-                                    (data['firstName'] as String?)?.trim() ?? '';
-                                final last =
-                                    (data['lastName'] as String?)?.trim() ?? '';
-                                final fsName = [first, last]
-                                    .where((e) => e.isNotEmpty)
-                                    .join(' ');
-                                if (fsName.isNotEmpty) name = fsName;
-                              }
-                              return Text(
-                                'Bienvenido $name',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w700,
-                                  color: kInk,
-                                ),
-                              );
-                            },
-                          );
-                        },
+                    ),
+                    _PillButton(
+                      color: context.isDark
+                          ? colors.primaryButton
+                          : kBlue,
+                      icon: Icons.event_note_outlined,
+                      text: 'Recuerdos',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const CalendarPage()),
                       ),
-
-                      const SizedBox(height: 8),
-                      const Text('Selecciona una opción',
-                          style: TextStyle(color: kGrey1)),
-                      const SizedBox(height: 20),
-
-                      // Botones principales
-                      _PillButton(
-                        color: kBlue,
-                        icon: Icons.menu_book_outlined,
-                        text: 'Consejos',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const TipsPage()),
-                        ),
-                      ),
-                      _PillButton(
-                        color: kBlue,
-                        icon: Icons.auto_stories_outlined,
-                        text: 'Frases',
-                        onTap: () => Navigator.push(
+                    ),
+                    _PillButton(
+                      color: context.isDark
+                          ? colors.primaryButton
+                          : kBlue,
+                      icon: Icons.videogame_asset_outlined,
+                      text: 'Juegos',
+                      onTap: () {
+                        Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) => const MotivationalPhrasesPage()),
-                        ),
-                      ),
-                      _PillButton(
-                        color: kBlue,
-                        icon: Icons.event_note_outlined,
-                        text: 'Recuerdos',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const CalendarPage()),
-                        ),
-                      ),
-                      _PillButton(
-                        color: kBlue,
-                        icon: Icons.videogame_asset_outlined,
-                        text: 'Juegos',
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const games.GamesPage()));
-                        },
-                      ),
+                            builder: (_) => const games.GamesPage(),
+                          ),
+                        );
+                      },
+                    ),
                     _PillButton(
-                      color: kBlue,
+                      color: context.isDark
+                          ? colors.primaryButton
+                          : kBlue,
                       icon: Icons.chat_bubble_outline,
                       text: 'Asistente',
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const AssistantPage()),
+                        MaterialPageRoute(
+                          builder: (_) => const AssistantPage(),
+                        ),
                       ),
                     ),
 
+                    const SizedBox(height: 8),
 
-                      const SizedBox(height: 8),
-
-                      /// 🚨 BOTÓN DE EMERGENCIA
-                      Opacity(
-                        opacity: _hasCaregiver ? 1 : 0.5,
-                        child: AbsorbPointer(
-                          absorbing: !_hasCaregiver,
-                          child: _PillButton(
-                            color: const Color(0xFFFF9AA0),
-                            icon: Icons.warning_amber_rounded,
-                            text: _hasCaregiver
-                                ? 'Emergencia'
-                                : 'Emergencia (sin cuidador)',
-                            onTap: _sendEmergencyAlert,
-                          ),
+                    /// 🚨 BOTÓN DE EMERGENCIA
+                    Opacity(
+                      opacity: _hasCaregiver ? 1 : 0.5,
+                      child: AbsorbPointer(
+                        absorbing: !_hasCaregiver,
+                        child: _PillButton(
+                          color: context.isDark
+                              ? colors.emergency
+                              : const Color(0xFFFF9AA0),
+                          icon: Icons.warning_amber_rounded,
+                          text: _hasCaregiver
+                              ? 'Emergencia'
+                              : 'Emergencia (sin cuidador)',
+                          onTap: _sendEmergencyAlert,
                         ),
                       ),
+                    ),
 
-                      const SizedBox(height: 24),
-                    ],
-                  ),
+                    const SizedBox(height: 24),
+                  ],
                 ),
               ),
             ),
@@ -482,6 +526,8 @@ class _NotificationBell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     final showBadge = count > 0;
     final display = count > 99 ? '99+' : count.toString();
 
@@ -490,17 +536,23 @@ class _NotificationBell extends StatelessWidget {
       children: [
         IconButton(
           onPressed: loading ? null : onTap,
-          icon: const Icon(Icons.notifications_none_rounded,
-              color: kInk, size: 28),
+          icon: Icon(
+            Icons.notifications_none_rounded,
+            color: colors.textPrimary,
+            size: 28,
+          ),
         ),
         if (loading)
-          const Positioned(
+          Positioned(
             right: 10,
             top: 10,
             child: SizedBox(
               width: 14,
               height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: colors.primaryButton,
+              ),
             ),
           ),
         if (!loading && showBadge)
@@ -510,7 +562,9 @@ class _NotificationBell extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.red,
+                color: context.isDark
+                    ? const Color(0xFFC35B5B)
+                    : Colors.red,
                 borderRadius: BorderRadius.circular(12),
               ),
               alignment: Alignment.center,
@@ -544,6 +598,11 @@ class _PillButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final buttonTextColor = context.isDark
+        ? Colors.white
+        : colors.textPrimary;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: SizedBox(
@@ -552,7 +611,7 @@ class _PillButton extends StatelessWidget {
         child: FilledButton(
           style: FilledButton.styleFrom(
             backgroundColor: color,
-            foregroundColor: kInk,
+            foregroundColor: buttonTextColor,
             shape: const StadiumBorder(),
             elevation: 0,
           ),
@@ -560,12 +619,15 @@ class _PillButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 24, color: kInk),
+              Icon(icon, size: 24, color: buttonTextColor),
               const SizedBox(width: 12),
               Text(
                 text,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w700, color: kInk),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: buttonTextColor,
+                ),
               ),
             ],
           ),

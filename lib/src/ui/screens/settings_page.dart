@@ -1,16 +1,26 @@
+// lib/src/ui/screens/settings_page.dart
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
 import '../../../services/patients_service.dart';
-import '../screens/choice_start.dart';
-import '../user_avatar.dart'; // ✅ muestra la foto de perfil
 import '../../../services/fcm_token_service.dart';
 
+import '../screens/choice_start.dart';
+import '../user_avatar.dart';
+import '../theme.dart';
+
+// HU-03
+import '../../core/accessibility/accessibility_controller.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  const SettingsPage({super.key, required this.a11y});
   static const route = '/settings';
+
+  final AccessibilityController a11y;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -23,13 +33,6 @@ class _SettingsPageState extends State<SettingsPage> {
   User? get _user => FirebaseAuth.instance.currentUser;
   String? get _uid => _user?.uid;
 
-  static const kPurple = Color(0xFFD6A7F4);
-  static const kBlue = Color(0xFF9ED3FF);
-  static const kPink = Color(0xFFFFB3B3);
-  static const kInk = Color(0xFF111111);
-  static const kPurpleStrong = Color(0xFF9D4DCB);
-  static const kBlueStrong = Color(0xFF4C99E8);
-
   bool _showTrashAnim = false;
 
   @override
@@ -38,235 +41,243 @@ class _SettingsPageState extends State<SettingsPage> {
     _svc = PatientsService(_db);
   }
 
-  // ===========================================================
-  // FUNCIÓN ELIMINAR CUENTA
-  // ===========================================================
-Future<void> _deleteAccount(BuildContext context) async {
-  if (_uid == null || _user == null) return;
+  Future<void> _deleteAccount(BuildContext context) async {
+    if (_uid == null || _user == null) return;
 
-  final userDoc = await _db.collection('users').doc(_uid).get();
-  final data = userDoc.data() ?? {};
-  final role = (data['role'] ?? '').toString();
+    final colors = context.appColors;
 
-  String message;
-  if (role == 'Consultante') {
-    message =
-        'Perderás todos tus recuerdos, fotos y datos vinculados. Tu cuidador dejará de verte en su lista.';
-  } else if (role == 'Cuidador') {
-    message =
-        'Se eliminarán tus datos, tus consultantes dejarán de estar vinculados y no podrán verte más.';
-  } else {
-    message =
-        'Esta acción eliminará permanentemente tu cuenta y toda tu información.';
-  }
+    final userDoc = await _db.collection('users').doc(_uid).get();
+    final data = userDoc.data() ?? {};
+    final role = (data['role'] ?? '').toString();
 
-  final confirm = await showDialog<bool>(
-    context: context,
-    barrierDismissible: false,
-    builder: (ctx) {
-      final passCtrl = TextEditingController();
-      bool obscure = true;
-      String? errorText;
-      bool verifying = false;
-
-      return StatefulBuilder(builder: (context, setState) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text(
-            '¿Eliminar cuenta?',
-            style: TextStyle(
-                color: kInk, fontWeight: FontWeight.bold, fontSize: 18),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '$message\n\nPor seguridad, ingresa tu contraseña para confirmar.',
-                style: const TextStyle(color: kInk),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: passCtrl,
-                obscureText: obscure,
-                decoration: InputDecoration(
-                  labelText: 'Contraseña',
-                  labelStyle: const TextStyle(color: kInk),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      obscure
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      color: kInk,
-                    ),
-                    onPressed: () => setState(() => obscure = !obscure),
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-              if (errorText != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  errorText!,
-                  style: const TextStyle(color: Colors.red, fontSize: 13),
-                ),
-              ],
-            ],
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              style: TextButton.styleFrom(
-                backgroundColor: kPurple,
-                foregroundColor: kInk,
-              ),
-              child: const Text('Cancelar'),
-            ),
-            TextButton(
-              onPressed: verifying
-                  ? null
-                  : () async {
-                      final password = passCtrl.text.trim();
-                      if (password.isEmpty) {
-                        setState(() =>
-                            errorText = 'Por favor, ingresa tu contraseña.');
-                        return;
-                      }
-
-                      setState(() {
-                        verifying = true;
-                        errorText = null;
-                      });
-
-                      try {
-                        final cred = EmailAuthProvider.credential(
-                          email: _user!.email!,
-                          password: password,
-                        );
-                        await _user!.reauthenticateWithCredential(cred);
-                        if (ctx.mounted) Navigator.pop(ctx, true);
-                      } catch (_) {
-                        setState(() {
-                          errorText = 'Contraseña incorrecta.';
-                          verifying = false;
-                        });
-                      }
-                    },
-              style: TextButton.styleFrom(
-                backgroundColor: kPink,
-                foregroundColor: kInk,
-              ),
-              child: verifying
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Eliminar cuenta'),
-            ),
-          ],
-        );
-      });
-    },
-  );
-
-  if (confirm != true) return;
-
-  try {
-    // 🔹 Si es cuidador, desvincular a sus consultantes
-    if (role == 'Cuidador') {
-      final patients = await _db
-          .collection('users')
-          .where('caregiverId', isEqualTo: _uid)
-          .get();
-      for (var doc in patients.docs) {
-        await doc.reference.update({'caregiverId': null});
-      }
+    String message;
+    if (role == 'Consultante') {
+      message =
+          'Perderás todos tus recuerdos, fotos y datos vinculados. Tu cuidador dejará de verte en su lista.';
+    } else if (role == 'Cuidador') {
+      message =
+          'Se eliminarán tus datos, tus consultantes dejarán de estar vinculados y no podrán verte más.';
+    } else {
+      message =
+          'Esta acción eliminará permanentemente tu cuenta y toda tu información.';
     }
 
-    // 🔹 Eliminar token FCM antes de borrar cuenta
-    await FCMTokenService.clearToken();
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        final passCtrl = TextEditingController();
+        bool obscure = true;
+        String? errorText;
+        bool verifying = false;
 
-    // 🔹 Eliminar documento de usuario en Firestore
-    await _db.collection('users').doc(_uid).delete();
-
-    // 🔹 Guarda UID antes de eliminar (por seguridad)
-    final uidToDelete = _uid;
-
-    // 🔹 Eliminar cuenta de Firebase Auth
-    await _user?.delete();
-
-    if (!mounted) return;
-
-    // 🔹 Mostrar animación de papelera
-    setState(() => _showTrashAnim = true);
-    await Future.delayed(const Duration(seconds: 3));
-    setState(() => _showTrashAnim = false);
-
-    if (mounted) {
-      await showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          backgroundColor: Colors.white,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text(
-            'Cuenta eliminada',
-            style: TextStyle(
-                color: kInk, fontWeight: FontWeight.bold, fontSize: 18),
-          ),
-          content: const Text(
-            'Tu cuenta ha sido eliminada correctamente.',
-            style: TextStyle(color: kInk),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              style: TextButton.styleFrom(
-                backgroundColor: kBlue,
-                foregroundColor: kInk,
-              ),
-              onPressed: () async {
-                Navigator.of(context).pop();
-
-                // 🔹 Cerrar sesión final por seguridad
-                await FirebaseAuth.instance.signOut();
-
-                if (context.mounted) {
-                  Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    ChoiceStart.route,
-                    (_) => false,
-                  );
-                }
-              },
-              child: const Text('Aceptar'),
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: colors.elevatedCard,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
             ),
-          ],
+            title: Text(
+              '¿Eliminar cuenta?',
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$message\n\nPor seguridad, ingresa tu contraseña para confirmar.',
+                  style: TextStyle(color: colors.textPrimary),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: passCtrl,
+                  obscureText: obscure,
+                  style: TextStyle(color: colors.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: 'Contraseña',
+                    labelStyle: TextStyle(color: colors.textPrimary),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        obscure
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: colors.textSecondary,
+                      ),
+                      onPressed: () => setState(() => obscure = !obscure),
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                if (errorText != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    errorText!,
+                    style: TextStyle(
+                      color: colors.emergency,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                style: TextButton.styleFrom(
+                  backgroundColor: colors.secondaryButton,
+                  foregroundColor: colors.secondaryButtonText,
+                ),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: verifying
+                    ? null
+                    : () async {
+                        final password = passCtrl.text.trim();
+                        if (password.isEmpty) {
+                          setState(() =>
+                              errorText = 'Por favor, ingresa tu contraseña.');
+                          return;
+                        }
+
+                        setState(() {
+                          verifying = true;
+                          errorText = null;
+                        });
+
+                        try {
+                          final cred = EmailAuthProvider.credential(
+                            email: _user!.email!,
+                            password: password,
+                          );
+                          await _user!.reauthenticateWithCredential(cred);
+                          if (ctx.mounted) Navigator.pop(ctx, true);
+                        } catch (_) {
+                          setState(() {
+                            errorText = 'Contraseña incorrecta.';
+                            verifying = false;
+                          });
+                        }
+                      },
+                style: TextButton.styleFrom(
+                  backgroundColor: colors.emergency,
+                  foregroundColor: colors.emergencyText,
+                ),
+                child: verifying
+                    ? SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: colors.emergencyText,
+                        ),
+                      )
+                    : const Text('Eliminar cuenta'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+
+    if (confirm != true) return;
+
+    try {
+      if (role == 'Cuidador') {
+        final patients = await _db
+            .collection('users')
+            .where('caregiverId', isEqualTo: _uid)
+            .get();
+        for (var doc in patients.docs) {
+          await doc.reference.update({'caregiverId': null});
+        }
+      }
+
+      if (!kIsWeb) {
+        try {
+          await FCMTokenService.clearToken();
+        } catch (_) {}
+      }
+
+      await _db.collection('users').doc(_uid).delete();
+      await _user?.delete();
+
+      if (!mounted) return;
+
+      setState(() => _showTrashAnim = true);
+      await Future.delayed(const Duration(seconds: 3));
+      setState(() => _showTrashAnim = false);
+
+      if (mounted) {
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => AlertDialog(
+            backgroundColor: colors.elevatedCard,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: Text(
+              'Cuenta eliminada',
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+            content: Text(
+              'Tu cuenta ha sido eliminada correctamente.',
+              style: TextStyle(color: colors.textPrimary),
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                style: TextButton.styleFrom(
+                  backgroundColor: colors.primaryButton,
+                  foregroundColor: colors.primaryButtonText,
+                ),
+                onPressed: () async {
+                  Navigator.of(context).pop();
+
+                  await FirebaseAuth.instance.signOut();
+
+                  if (context.mounted) {
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      ChoiceStart.route,
+                      (_) => false,
+                    );
+                  }
+                },
+                child: const Text('Aceptar'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: colors.elevatedCard,
+          content: Text(
+            'Error al eliminar cuenta: $e',
+            style: TextStyle(color: colors.textPrimary),
+          ),
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Error al eliminar cuenta: $e'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
-}
 
-
-  // ===========================================================
-  // INTERFAZ PRINCIPAL
-  // ===========================================================
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -281,21 +292,26 @@ Future<void> _deleteAccount(BuildContext context) async {
   }
 
   Widget _buildMainUI(BuildContext context) {
+    final colors = context.appColors;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: colors.pageBackground,
       appBar: AppBar(
         elevation: 0,
         centerTitle: true,
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: colors.pageBackground,
+        surfaceTintColor: Colors.transparent,
         leading: IconButton(
           onPressed: () => Navigator.maybePop(context),
-          icon: const Icon(Icons.arrow_back_rounded, color: kInk),
+          icon: Icon(Icons.arrow_back_rounded, color: colors.textPrimary),
         ),
-        title: const Text(
+        title: Text(
           'Ajustes',
-          style:
-              TextStyle(color: kInk, fontSize: 22, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            color: colors.textPrimary,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
       body: SafeArea(
@@ -308,7 +324,7 @@ Future<void> _deleteAccount(BuildContext context) async {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const SizedBox(height: 10),
-                  const UserAvatar(radius: 60), // ✅ avatar agregado
+                  const UserAvatar(radius: 60),
                   const SizedBox(height: 14),
 
                   StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -317,9 +333,12 @@ Future<void> _deleteAccount(BuildContext context) async {
                         : const Stream.empty(),
                     builder: (context, snap) {
                       if (!snap.hasData || !snap.data!.exists) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          child: Text('Usuario no encontrado'),
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Text(
+                            'Usuario no encontrado',
+                            style: TextStyle(color: colors.textPrimary),
+                          ),
                         );
                       }
 
@@ -327,34 +346,48 @@ Future<void> _deleteAccount(BuildContext context) async {
                       final role = (me['role'] as String?)?.trim() ?? '';
                       final firstName =
                           (me['firstName'] as String?)?.trim() ?? '';
-                      final lastName =
-                          (me['lastName'] as String?)?.trim() ?? '';
+                      final lastName = (me['lastName'] as String?)?.trim() ?? '';
                       final caregiverId = me['caregiverId'] as String?;
                       final myName = [firstName, lastName]
                           .where((e) => e.isNotEmpty)
                           .join(' ');
 
+                      final roleBg = role == 'Cuidador'
+                          ? (context.isDark
+                              ? colors.categoryPurple.withOpacity(0.28)
+                              : const Color(0xFFF5E9FC))
+                          : (context.isDark
+                              ? colors.categoryBlue.withOpacity(0.28)
+                              : const Color(0xFFE8F5FF));
+
+                      final roleBorder = role == 'Cuidador'
+                          ? (context.isDark
+                              ? colors.categoryPurple
+                              : const Color(0xFF9D4DCB))
+                          : (context.isDark
+                              ? colors.categoryBlue
+                              : const Color(0xFF4C99E8));
+
                       return Column(
                         children: [
                           Text(
                             myName,
-                            style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                color: kInk),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: colors.textPrimary,
+                            ),
                           ),
                           const SizedBox(height: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 18, vertical: 8),
+                              horizontal: 18,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
-                              color: role == 'Cuidador'
-                                  ? const Color(0xFFF5E9FC)
-                                  : const Color(0xFFE8F5FF),
+                              color: roleBg,
                               border: Border.all(
-                                color: role == 'Cuidador'
-                                    ? kPurpleStrong
-                                    : kBlueStrong,
+                                color: roleBorder,
                                 width: 2.0,
                               ),
                               borderRadius: BorderRadius.circular(12),
@@ -362,9 +395,7 @@ Future<void> _deleteAccount(BuildContext context) async {
                             child: Text(
                               role,
                               style: TextStyle(
-                                color: role == 'Cuidador'
-                                    ? kPurpleStrong
-                                    : kBlueStrong,
+                                color: roleBorder,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -379,9 +410,16 @@ Future<void> _deleteAccount(BuildContext context) async {
                       );
                     },
                   ),
-                  const Text('Gestiona tu cuenta',
-                      style: TextStyle(color: Colors.black54)),
+
+                  Text(
+                    'Gestiona tu cuenta',
+                    style: TextStyle(color: colors.textSecondary),
+                  ),
                   const SizedBox(height: 10),
+
+                  _buildAccessibilityBlock(),
+                  const SizedBox(height: 14),
+
                   _buildActionButtons(context),
                 ],
               ),
@@ -392,22 +430,166 @@ Future<void> _deleteAccount(BuildContext context) async {
     );
   }
 
-  // ===========================================================
-  // BLOQUES Y BOTONES
-  // ===========================================================
+  Widget _buildAccessibilityBlock() {
+    return AnimatedBuilder(
+      animation: widget.a11y,
+      builder: (context, _) {
+        final s = widget.a11y.settings;
+        final colors = context.appColors;
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colors.cardBackground,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: colors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Accesibilidad',
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              Text(
+                'Tamaño de letra',
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  _sizeChip(
+                    label: 'Normal',
+                    selected: s.textSizeLevel == 0,
+                    onTap: () => widget.a11y.setTextSizeLevel(0),
+                    color: context.isDark
+                        ? colors.categoryBlue
+                        : const Color(0xFF9ED3FF),
+                  ),
+                  _sizeChip(
+                    label: 'Medio',
+                    selected: s.textSizeLevel == 1,
+                    onTap: () => widget.a11y.setTextSizeLevel(1),
+                    color: context.isDark
+                        ? colors.categoryPurple
+                        : const Color(0xFFD6A7F4),
+                  ),
+                  _sizeChip(
+                    label: 'Grande',
+                    selected: s.textSizeLevel == 2,
+                    onTap: () => widget.a11y.setTextSizeLevel(2),
+                    color: context.isDark
+                        ? colors.categoryPink
+                        : const Color(0xFFFFB3B3),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: s.darkMode,
+                onChanged: (v) => widget.a11y.setDarkMode(v),
+                title: Text(
+                  'Modo oscuro',
+                  style: TextStyle(
+                    color: colors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                subtitle: Text(
+                  'Activa un tema oscuro en toda la app.',
+                  style: TextStyle(color: colors.textSecondary),
+                ),
+              ),
+
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: s.simplified,
+                onChanged: (v) => widget.a11y.setSimplified(v),
+                title: Text(
+                  'Modo simplificado',
+                  style: TextStyle(
+                    color: colors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                subtitle: Text(
+                  'Reduce efectos y hace la interfaz más simple.',
+                  style: TextStyle(color: colors.textSecondary),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _sizeChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    final colors = context.appColors;
+
+    return ChoiceChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          color: colors.textPrimary,
+          fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
+        ),
+      ),
+      selected: selected,
+      onSelected: (_) => onTap(),
+      selectedColor: color.withOpacity(context.isDark ? 0.38 : 0.65),
+      backgroundColor: colors.elevatedCard,
+      side: BorderSide(
+        color: selected ? color : colors.border,
+        width: selected ? 1.8 : 1.2,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    );
+  }
+
   Widget _buildCaregiverBlock(String? caregiverId) {
+    final colors = context.appColors;
+
     if (caregiverId == null || caregiverId.isEmpty) {
+      final bg = context.isDark
+          ? colors.categoryPurple.withOpacity(0.18)
+          : const Color(0xFFD6A7F4).withOpacity(0.2);
+      final border = context.isDark
+          ? colors.categoryPurple
+          : const Color(0xFF9D4DCB);
+
       return Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: kPurple.withOpacity(0.2),
+          color: bg,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: kPurpleStrong, width: 2.0),
+          border: Border.all(color: border, width: 2.0),
         ),
-        child: const Text(
+        child: Text(
           'No tienes un cuidador asignado actualmente.',
           style: TextStyle(
-            color: kPurpleStrong,
+            color: border,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -417,23 +599,32 @@ Future<void> _deleteAccount(BuildContext context) async {
     return FutureBuilder<DocumentSnapshot>(
       future: _db.collection('users').doc(caregiverId).get(),
       builder: (context, snap) {
-        if (!snap.hasData) return const CircularProgressIndicator();
+        if (!snap.hasData) {
+          return CircularProgressIndicator(color: colors.primaryButton);
+        }
         final data = snap.data!.data() as Map<String, dynamic>?;
         final name = data != null
             ? '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'.trim()
             : '(Desconocido)';
 
+        final bg = context.isDark
+            ? colors.categoryPurple.withOpacity(0.18)
+            : const Color(0xFFD6A7F4).withOpacity(0.2);
+        final border = context.isDark
+            ? colors.categoryPurple
+            : const Color(0xFF9D4DCB);
+
         return Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: kPurple.withOpacity(0.2),
+            color: bg,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: kPurpleStrong, width: 2.0),
+            border: Border.all(color: border, width: 2.0),
           ),
           child: Text(
             'Tu cuidador: $name',
-            style: const TextStyle(
-              color: kPurpleStrong,
+            style: TextStyle(
+              color: border,
               fontWeight: FontWeight.w800,
               fontSize: 15,
             ),
@@ -444,53 +635,63 @@ Future<void> _deleteAccount(BuildContext context) async {
   }
 
   Widget _buildConsultantsBlock(String caregiverId) {
+    final colors = context.appColors;
+
     return StreamBuilder<QuerySnapshot>(
       stream: _db
           .collection('users')
           .where('caregiverId', isEqualTo: caregiverId)
           .snapshots(),
       builder: (context, snap) {
-        if (!snap.hasData) return const CircularProgressIndicator();
+        if (!snap.hasData) {
+          return CircularProgressIndicator(color: colors.primaryButton);
+        }
         final patients = snap.data!.docs;
+
+        final bg = context.isDark
+            ? colors.categoryBlue.withOpacity(0.18)
+            : const Color(0xFF9ED3FF).withOpacity(0.2);
+        final border = context.isDark
+            ? colors.categoryBlue
+            : const Color(0xFF4C99E8);
 
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: kBlue.withOpacity(0.2),
+            color: bg,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: kBlueStrong, width: 2.0),
+            border: Border.all(color: border, width: 2.0),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Tus consultantes:',
                 style: TextStyle(
-                  color: kBlueStrong,
+                  color: border,
                   fontWeight: FontWeight.w800,
                   fontSize: 15,
                 ),
               ),
               const SizedBox(height: 6),
               if (patients.isEmpty)
-                const Text(
+                Text(
                   'Aún no tienes consultantes asignados.',
                   style: TextStyle(
-                    color: kBlueStrong,
+                    color: border,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               for (var doc in patients)
                 Row(
                   children: [
-                    const Icon(Icons.person_outline,
-                        size: 18, color: kBlueStrong),
+                    Icon(Icons.person_outline, size: 18, color: border),
                     const SizedBox(width: 6),
                     Text(
                       '${doc['firstName']} ${doc['lastName']}',
-                      style: const TextStyle(
-                        color: kBlueStrong,
+                      style: TextStyle(
+                        color: border,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -504,102 +705,102 @@ Future<void> _deleteAccount(BuildContext context) async {
   }
 
   Widget _buildActionButtons(BuildContext context) {
-  return Column(
-    children: [
-      SizedBox(
-        width: double.infinity,
-        height: 52,
-        child: FilledButton.icon(
-          style: FilledButton.styleFrom(
-            backgroundColor: kBlue,
-            foregroundColor: kInk,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(28),
+    final colors = context.appColors;
+
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.primaryButton,
+              foregroundColor: colors.primaryButtonText,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
             ),
+            onPressed: () =>
+                Navigator.pushNamed(context, '/settings/edit-profile'),
+            icon: const Icon(Icons.person_outline),
+            label: const Text('Perfil'),
           ),
-          onPressed: () =>
-              Navigator.pushNamed(context, '/settings/edit-profile'),
-          icon: const Icon(Icons.person_outline),
-          label: const Text('Perfil'),
         ),
-      ),
-      const SizedBox(height: 10),
-      SizedBox(
-        width: double.infinity,
-        height: 52,
-        child: FilledButton.icon(
-          style: FilledButton.styleFrom(
-            backgroundColor: kPurple,
-            foregroundColor: kInk,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(28),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.secondaryButton,
+              foregroundColor: colors.secondaryButtonText,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
             ),
+            onPressed: () async {
+              try {
+                if (!kIsWeb) {
+                  try {
+                    await FCMTokenService.unregisterCurrentDeviceToken();
+                  } catch (_) {}
+                }
+
+                await FirebaseAuth.instance.signOut();
+
+                if (!mounted) return;
+
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/login',
+                  (_) => false,
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    backgroundColor: colors.elevatedCard,
+                    content: Text(
+                      'Error al cerrar sesión: $e',
+                      style: TextStyle(color: colors.textPrimary),
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.logout),
+            label: const Text('Cerrar sesión'),
           ),
-   onPressed: () async {
-  try {
-    // 1) Quitar este dispositivo de la cuenta en Firestore
-    await FCMTokenService.unregisterCurrentDeviceToken();
-
-    // 2) Cerrar sesión
-    await FirebaseAuth.instance.signOut();
-
-    if (!mounted) return;
-
-    // 3) Volver al login
-    Navigator.pushNamedAndRemoveUntil(
-      context,
-      '/login',
-      (_) => false,
-    );
-  } catch (e) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Error al cerrar sesión: $e'),
-        behavior: SnackBarBehavior.floating,
-      ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.emergency,
+              foregroundColor: colors.emergencyText,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
+            ),
+            onPressed: () => _deleteAccount(context),
+            icon: const Icon(Icons.delete_forever_outlined),
+            label: const Text('Eliminar cuenta'),
+          ),
+        ),
+      ],
     );
   }
-},
-
-
-          icon: const Icon(Icons.logout),
-          label: const Text('Cerrar sesión'),
-        ),
-      ),
-      const SizedBox(height: 10),
-      SizedBox(
-        width: double.infinity,
-        height: 52,
-        child: FilledButton.icon(
-          style: FilledButton.styleFrom(
-            backgroundColor: kPink,
-            foregroundColor: kInk,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(28),
-            ),
-          ),
-          onPressed: () => _deleteAccount(context),
-          icon: const Icon(Icons.delete_forever_outlined),
-          label: const Text('Eliminar cuenta'),
-        ),
-      ),
-    ],
-  );
 }
 
-}
-
-// ===========================================================
-// ANIMACIÓN DEL BOTE DE BASURA
-// ===========================================================
 class AnimatedTrashAnimation extends StatefulWidget {
   final VoidCallback onDone;
   const AnimatedTrashAnimation({super.key, required this.onDone});
 
   @override
-  State<AnimatedTrashAnimation> createState() =>
-      _AnimatedTrashAnimationState();
+  State<AnimatedTrashAnimation> createState() => _AnimatedTrashAnimationState();
 }
 
 class _AnimatedTrashAnimationState extends State<AnimatedTrashAnimation>
@@ -630,8 +831,12 @@ class _AnimatedTrashAnimationState extends State<AnimatedTrashAnimation>
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     return Container(
-      color: Colors.white.withOpacity(0.95),
+      color: context.isDark
+          ? Colors.black.withOpacity(0.88)
+          : Colors.white.withOpacity(0.95),
       alignment: Alignment.center,
       child: AnimatedBuilder(
         animation: _controller,
@@ -641,21 +846,30 @@ class _AnimatedTrashAnimationState extends State<AnimatedTrashAnimation>
             children: [
               Transform.translate(
                 offset: Offset(0, 200 * _paperAnim.value),
-                child: const Icon(Icons.description_outlined,
-                    size: 60, color: Colors.grey),
+                child: Icon(
+                  Icons.description_outlined,
+                  size: 60,
+                  color: colors.textSecondary,
+                ),
               ),
-              const Positioned(
+              Positioned(
                 bottom: 200,
-                child:
-                    Icon(Icons.delete_outline, size: 100, color: Colors.black87),
+                child: Icon(
+                  Icons.delete_outline,
+                  size: 100,
+                  color: colors.textPrimary,
+                ),
               ),
               Positioned(
                 bottom: 280,
                 child: Transform.rotate(
                   angle: _lidAnim.value,
                   origin: const Offset(30, 10),
-                  child: const Icon(Icons.horizontal_rule_rounded,
-                      size: 100, color: Colors.black87),
+                  child: Icon(
+                    Icons.horizontal_rule_rounded,
+                    size: 100,
+                    color: colors.textPrimary,
+                  ),
                 ),
               ),
             ],

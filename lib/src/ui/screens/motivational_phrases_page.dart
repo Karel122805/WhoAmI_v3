@@ -116,12 +116,22 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
     await _tts.setSpeechRate(0.5);
   }
 
-  void _loadCategory(String cat) async {
-    await _tts.stop();
+  // ✅ STOP centralizado (volver al menú / back del sistema / dispose)
+  Future<void> _stopTts() async {
+    try {
+      await _tts.stop();
+    } catch (_) {
+      // ignorar errores del motor TTS
+    }
+  }
+
+  Future<void> _loadCategory(String cat) async {
+    await _stopTts();
     _selected = cat;
 
     final list = List<String>.from(_phrasesByCategory[cat]!)..shuffle(_rnd);
 
+    if (!mounted) return;
     setState(() {
       _visible = list;
       _showMenu = false;
@@ -129,25 +139,32 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
   }
 
   Future<void> _speak(String t) async {
-    await _tts.stop();
+    await _stopTts();
     await _tts.speak(t);
   }
 
   @override
   void dispose() {
-    _tts.stop();
+    _stopTts();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Frases"),
-        centerTitle: true,
-        elevation: 0,
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (didPop) async {
+        // ✅ si se sale con botón atrás/gesto, detener audio
+        await _stopTts();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("Frases"),
+          centerTitle: true,
+          elevation: 0,
+        ),
+        body: _showMenu ? _buildMenu() : _buildPhrases(),
       ),
-      body: _showMenu ? _buildMenu() : _buildPhrases(),
     );
   }
 
@@ -183,9 +200,10 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
                     Text(
                       cat,
                       style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: textColor),
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: textColor,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                   ],
@@ -222,13 +240,18 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () => setState(() => _showMenu = true),
+              onPressed: () async {
+                await _stopTts(); // ✅ detener audio al volver al menú
+                if (!mounted) return;
+                setState(() => _showMenu = true);
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFE9D8FF),
-                foregroundColor: Color(0xFF6B2FAF),
+                foregroundColor: const Color(0xFF6B2FAF),
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(22)),
+                  borderRadius: BorderRadius.circular(22),
+                ),
                 elevation: 4,
               ),
               child: const Text(

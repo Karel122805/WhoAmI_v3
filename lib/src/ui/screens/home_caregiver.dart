@@ -3,23 +3,20 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:vibration/vibration.dart';
-import 'package:url_launcher/url_launcher.dart'; // 🌍 abrir en Google Maps
+import 'package:url_launcher/url_launcher.dart';
 
 import '../theme.dart';
-import 'settings_page.dart';
 import '../user_avatar.dart';
 import 'quick_guides_page.dart';
 import 'patients_list_page.dart';
 import 'calendar_page.dart';
 import 'notifications_page.dart';
 import 'emergency_map_page.dart';
-import 'package:whoami_app/services/memories_scheduler.dart';
-import 'package:whoami_app/services/notifications_service.dart';
 import 'assistant_page.dart';
 
-/// =============================================================
-/// HOME CAREGIVER PAGE — VERSIÓN FINAL FUNCIONAL MEJORADA
-/// =============================================================
+import 'package:whoami_app/services/memories_scheduler.dart';
+import 'package:whoami_app/services/notifications_service.dart';
+
 class HomeCaregiverPage extends StatefulWidget {
   const HomeCaregiverPage({super.key, this.displayName});
   static const route = '/home/caregiver';
@@ -39,7 +36,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _initializeHome();
-      _listenForEmergencyAlerts(); // 🔥 escucha activa
+      _listenForEmergencyAlerts();
     });
   }
 
@@ -56,18 +53,13 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
     }
   }
 
-  /// =============================================================
-  /// 🆘 FUNCIÓN NUEVA → limpia emergencia + notificaciones
-  /// =============================================================
   Future<void> _resolveEmergency(String docId) async {
     try {
-      // 1) marcar como resuelta en Firestore
       await FirebaseFirestore.instance
           .collection('emergencies')
           .doc(docId)
           .update({'active': false});
 
-      // 2) borrar notificaciones locales de emergencia
       final pending = await NotificationsService.pendingNotificationRequests();
       for (final item in pending) {
         if (item.payload == 'emergency') {
@@ -75,217 +67,217 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
         }
       }
 
-      // 3) recargar
       await _loadNotifCount();
     } catch (e) {
       debugPrint("⚠️ Error resolviendo emergencia: $e");
     }
   }
 
-  /// =============================================================
-/// 🔥 ESCUCHA EN TIEMPO REAL DE EMERGENCIAS — VERSIÓN PREMIUM
-/// =============================================================
-void _listenForEmergencyAlerts() {
-  final uid = FirebaseAuth.instance.currentUser?.uid;
-  if (uid == null) return;
+  void _listenForEmergencyAlerts() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
 
-  final emergenciesRef = FirebaseFirestore.instance
-      .collection('emergencies')
-      .where('caregiverId', isEqualTo: uid)
-      .where('active', isEqualTo: true)
-      .orderBy('timestamp', descending: true);
+    final emergenciesRef = FirebaseFirestore.instance
+        .collection('emergencies')
+        .where('caregiverId', isEqualTo: uid)
+        .where('active', isEqualTo: true)
+        .orderBy('timestamp', descending: true);
 
-  emergenciesRef.snapshots(includeMetadataChanges: true).listen((snapshot) {
-    if (snapshot.docs.isEmpty) return;
+    emergenciesRef.snapshots(includeMetadataChanges: true).listen((snapshot) {
+      if (snapshot.docs.isEmpty) return;
 
-    for (final doc in snapshot.docs) {
-      final alertId = doc.id;
+      for (final doc in snapshot.docs) {
+        final alertId = doc.id;
 
-      // Evitar repetir alertas
-      if (_lastAlertId == alertId) continue;
-      _lastAlertId = alertId;
+        if (_lastAlertId == alertId) continue;
+        _lastAlertId = alertId;
 
-      final data = doc.data();
-      final consultantId = data['consultantId'] ?? '';
-      final consultantName = data['consultantName'] ?? 'Consultante';
-      final lat = data['lat'];
-      final lng = data['lng'];
-      final title = data['title'] ?? '🚨 Emergencia detectada';
-      final body = data['body'] ?? '$consultantName necesita ayuda.';
+        final data = doc.data();
+        final consultantId = data['consultantId'] ?? '';
+        final consultantName = data['consultantName'] ?? 'Consultante';
+        final lat = data['lat'];
+        final lng = data['lng'];
+        final title = data['title'] ?? '🚨 Emergencia detectada';
+        final body = data['body'] ?? '$consultantName necesita ayuda.';
 
-      if (lat == null || lng == null) continue;
+        if (lat == null || lng == null) continue;
 
-      debugPrint('🆘 Emergencia recibida en tiempo real para cuidador $uid');
+        debugPrint('🆘 Emergencia recibida en tiempo real para cuidador $uid');
 
-      // Vibración + notificación instantánea
-      if (!kIsWeb) {
-        NotificationsService.showInstant(title: title, body: body);
-        Vibration.vibrate(duration: 1500, amplitude: 255);
-      }
+        if (!kIsWeb) {
+          NotificationsService.showInstant(title: title, body: body);
+          Vibration.vibrate(duration: 1500, amplitude: 255);
+        }
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      // ====== ALERTA PREMIUM ======
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(22),
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFFFFDDDD),
-                    Color(0xFFFFF1F1),
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final colors = context.appColors;
+
+          final dialogBgTop = context.isDark
+              ? const Color(0xFF3B2024)
+              : const Color(0xFFFFDDDD);
+          final dialogBgBottom = context.isDark
+              ? const Color(0xFF24161A)
+              : const Color(0xFFFFF1F1);
+          final shadowColor = context.isDark
+              ? Colors.black.withOpacity(0.45)
+              : Colors.black.withOpacity(0.20);
+          final dangerAccent = context.isDark
+              ? const Color(0xFFFF8E8E)
+              : Colors.red;
+
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                  gradient: LinearGradient(
+                    colors: [dialogBgTop, dialogBgBottom],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: shadowColor,
+                      blurRadius: 22,
+                      offset: const Offset(0, 8),
+                    )
                   ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
+                  border: Border.all(
+                    color: context.isDark
+                        ? const Color(0xFF6B2B33)
+                        : const Color(0xFFFFC2C2),
+                  ),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.20),
-                    blurRadius: 22,
-                    offset: const Offset(0, 8),
-                  )
-                ],
-              ),
-              padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  
-                  // 🔥 Encabezado premium
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.warning_rounded,
-                            color: Colors.red, size: 32),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Emergencia de $consultantName',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.black,
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: dangerAccent.withOpacity(0.18),
+                            shape: BoxShape.circle,
                           ),
-                          overflow: TextOverflow.ellipsis,
+                          child: Icon(
+                            Icons.warning_rounded,
+                            color: dangerAccent,
+                            size: 32,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Emergencia de $consultantName',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: colors.textPrimary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      body,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: colors.textPrimary,
+                        fontSize: 16,
+                        height: 1.3,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 240,
+                        child: EmergencyMapPage(
+                          consultantId: consultantId,
+                          lat: lat,
+                          lng: lng,
+                          isDialog: true,
                         ),
                       ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // Mensaje
-                  Text(
-                    body,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.black87,
-                      fontSize: 16,
-                      height: 1.3,
-                      fontWeight: FontWeight.w500,
                     ),
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  // 🌍 MAPA
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: SizedBox(
+                    const SizedBox(height: 20),
+                    SizedBox(
                       width: double.infinity,
-                      height: 240,
-                      child: EmergencyMapPage(
-                        consultantId: consultantId,
-                        lat: lat,
-                        lng: lng,
-                        isDialog: true,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.navigation_rounded,
+                            color: Colors.white),
+                        label: const Text(
+                          "Abrir en Google Maps",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                            color: Colors.white,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: context.isDark
+                              ? const Color(0xFFC35B5B)
+                              : Colors.redAccent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 4,
+                        ),
+                        onPressed: () async {
+                          final url = 'https://www.google.com/maps?q=$lat,$lng';
+                          final uri = Uri.parse(url);
+
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(uri,
+                                mode: LaunchMode.externalApplication);
+                          }
+
+                          if (context.mounted) Navigator.pop(context);
+                          await _resolveEmergency(alertId);
+                        },
                       ),
                     ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // 🌐 BOTÓN GOOGLE MAPS
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.navigation_rounded, color: Colors.white),
-                      label: const Text(
-                        "Abrir en Google Maps",
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                          color: Colors.white,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.redAccent,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        elevation: 4,
-                      ),
+                    const SizedBox(height: 12),
+                    TextButton(
                       onPressed: () async {
-                        final url = 'https://www.google.com/maps?q=$lat,$lng';
-                        final uri = Uri.parse(url);
-
-                        if (await canLaunchUrl(uri)) {
-                          await launchUrl(uri, mode: LaunchMode.externalApplication);
-                        }
-
                         Navigator.pop(context);
                         await _resolveEmergency(alertId);
                       },
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // ❌ BOTÓN CERRAR
-                  TextButton(
-                    onPressed: () async {
-                      Navigator.pop(context);
-                      await _resolveEmergency(alertId);
-                    },
-                    child: const Text(
-                      "Cerrar",
-                      style: TextStyle(
-                        color: Colors.black,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        decoration: TextDecoration.underline,
+                      child: Text(
+                        "Cerrar",
+                        style: TextStyle(
+                          color: colors.textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.underline,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        );
-      });
-    }
-  }, onError: (error) {
-    debugPrint('⚠️ Error escuchando emergencias: $error');
-  });
-}
+          );
+        });
+      }
+    }, onError: (error) {
+      debugPrint('⚠️ Error escuchando emergencias: $error');
+    });
+  }
 
-
-  /// =============================================================
-  /// Cargar número de notificaciones pendientes
-  /// =============================================================
   Future<void> _loadNotifCount() async {
     try {
       final pending =
@@ -307,187 +299,175 @@ void _listenForEmergencyAlerts() {
     await _loadNotifCount();
   }
 
-  /// =============================================================
-  /// INTERFAZ PRINCIPAL
-  /// =============================================================
   @override
   Widget build(BuildContext context) {
-    return MediaQuery(
-      data: MediaQuery.of(context).copyWith(
-        textScaler: const TextScaler.linear(1),
-      ),
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        body: Stack(
-          children: [
-            SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 72, 20, 20),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        const UserAvatar(radius: 60),
-                        const SizedBox(height: 12),
+    final colors = context.appColors;
 
-                        StreamBuilder<User?>(
-                          stream: FirebaseAuth.instance.userChanges(),
-                          builder: (context, authSnap) {
-                            final user = authSnap.data ??
-                                FirebaseAuth.instance.currentUser;
-                            if (user == null) return const SizedBox();
-                            final uid = user.uid;
+    return Scaffold(
+      backgroundColor: colors.pageBackground,
+      body: Stack(
+        children: [
+          SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 72, 20, 20),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const UserAvatar(radius: 60),
+                      const SizedBox(height: 12),
+                      StreamBuilder<User?>(
+                        stream: FirebaseAuth.instance.userChanges(),
+                        builder: (context, authSnap) {
+                          final user =
+                              authSnap.data ?? FirebaseAuth.instance.currentUser;
+                          if (user == null) return const SizedBox();
+                          final uid = user.uid;
 
-                            return StreamBuilder<
-                                DocumentSnapshot<Map<String, dynamic>>>(
-                              stream: FirebaseFirestore.instance
-                                  .collection('users')
-                                  .doc(uid)
-                                  .snapshots(),
-                              builder: (context, docSnap) {
-                                String name = 'Cuidador';
-                                if (docSnap.hasData &&
-                                    docSnap.data!.data() != null) {
-                                  final data = docSnap.data!.data()!;
-                                  final first =
-                                      (data['firstName'] as String?)?.trim() ??
-                                          '';
-                                  final last =
-                                      (data['lastName'] as String?)?.trim() ??
-                                          '';
-                                  final fsName = [first, last]
-                                      .where((e) => e.isNotEmpty)
-                                      .join(' ');
-                                  if (fsName.isNotEmpty) name = fsName;
+                          return StreamBuilder<
+                              DocumentSnapshot<Map<String, dynamic>>>(
+                            stream: FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(uid)
+                                .snapshots(),
+                            builder: (context, docSnap) {
+                              String name = 'Cuidador';
+                              if (docSnap.hasData &&
+                                  docSnap.data!.data() != null) {
+                                final data = docSnap.data!.data()!;
+                                final first =
+                                    (data['firstName'] as String?)?.trim() ?? '';
+                                final last =
+                                    (data['lastName'] as String?)?.trim() ?? '';
+                                final fsName = [first, last]
+                                    .where((e) => e.isNotEmpty)
+                                    .join(' ');
+                                if (fsName.isNotEmpty) name = fsName;
+                              }
+
+                              if (name == 'Cuidador') {
+                                final dn = (user.displayName ?? '').trim();
+                                if (dn.isNotEmpty) name = dn;
+                              }
+
+                              if (name == 'Cuidador') {
+                                final mail = user.email ?? '';
+                                if (mail.contains('@')) {
+                                  name = mail.split('@').first;
                                 }
+                              }
 
-                                if (name == 'Cuidador') {
-                                  final dn = (user.displayName ?? '').trim();
-                                  if (dn.isNotEmpty) name = dn;
-                                }
+                              name = name.isNotEmpty
+                                  ? name
+                                  : (widget.displayName ?? 'Cuidador');
 
-                                if (name == 'Cuidador') {
-                                  final mail = user.email ?? '';
-                                  if (mail.contains('@')) {
-                                    name = mail.split('@').first;
-                                  }
-                                }
-
-                                name = name.isNotEmpty
-                                    ? name
-                                    : (widget.displayName ?? 'Cuidador');
-
-                                return Text(
-                                  'Bienvenido $name',
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.w700,
-                                    color: kInk,
-                                  ),
-                                );
-                              },
-                            );
-                          },
+                              return Text(
+                                'Bienvenido $name',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w700,
+                                  color: colors.textPrimary,
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Selecciona una opción',
+                        style: TextStyle(
+                          color: colors.textSecondary,
                         ),
-
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Selecciona una opción',
-                          style: TextStyle(color: kGrey1),
+                      ),
+                      const SizedBox(height: 20),
+                      _PillButton(
+                        color: context.isDark
+                            ? colors.secondaryButton
+                            : kPurple,
+                        icon: Icons.people_outline,
+                        text: 'Pacientes',
+                        onTap: () =>
+                            Navigator.pushNamed(context, PatientsListPage.route),
+                      ),
+                      _PillButton(
+                        color: context.isDark
+                            ? colors.secondaryButton
+                            : kPurple,
+                        icon: Icons.menu_book_outlined,
+                        text: 'Guías',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const QuickGuidesPage()),
                         ),
-                        const SizedBox(height: 20),
-
-                        _PillButton(
-                          color: kPurple,
-                          icon: Icons.people_outline,
-                          text: 'Pacientes',
-                          onTap: () => Navigator.pushNamed(
-                              context, PatientsListPage.route),
+                      ),
+                      _PillButton(
+                        color: context.isDark
+                            ? colors.secondaryButton
+                            : kPurple,
+                        icon: Icons.event_note_outlined,
+                        text: 'Recuerdos',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const CalendarPage()),
                         ),
-                        _PillButton(
-                          color: kPurple,
-                          icon: Icons.menu_book_outlined,
-                          text: 'Guías',
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const QuickGuidesPage()),
-                          ),
+                      ),
+                      _PillButton(
+                        color: context.isDark
+                            ? colors.secondaryButton
+                            : kPurple,
+                        icon: Icons.chat_bubble_outline,
+                        text: 'Asistente',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const AssistantPage()),
                         ),
-                        _PillButton(
-                          color: kPurple,
-                          icon: Icons.event_note_outlined,
-                          text: 'Recuerdos',
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const CalendarPage()),
-                          ),
-                        ),
-                        _PillButton(
-                          color: kPurple,
-                          icon: Icons.chat_bubble_outline,
-                          text: 'Asistente',
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const AssistantPage()),
-                          ),
-                        ),
-
-                        const SizedBox(height: 24),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
                   ),
                 ),
               ),
             ),
-
-            /// ---------- Ajustes (esquina superior izquierda)
-            SafeArea(
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 8, top: 4),
-                  child: IconButton(
-                    icon: const Icon(Icons.settings, color: kInk, size: 28),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const SettingsPage()),
-                    ),
-                    tooltip: 'Ajustes',
-                  ),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8, top: 4),
+                child: IconButton(
+                  icon:
+                      Icon(Icons.settings, color: colors.textPrimary, size: 28),
+                  onPressed: () => Navigator.pushNamed(context, '/settings'),
+                  tooltip: 'Ajustes',
                 ),
               ),
             ),
-
-            /// ---------- Campana de notificaciones
-            SafeArea(
-              child: Align(
-                alignment: Alignment.topRight,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8, top: 4),
-                  child: _NotificationBell(
-                    count: _notifCount,
-                    loading: _loadingNotif,
-                    onTap: _openNotifications,
-                  ),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8, top: 4),
+                child: _NotificationBell(
+                  count: _notifCount,
+                  loading: _loadingNotif,
+                  onTap: _openNotifications,
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// =============================================================
-// COMPONENTES REUTILIZABLES
-// =============================================================
 class _NotificationBell extends StatelessWidget {
   const _NotificationBell({
     required this.count,
@@ -501,6 +481,8 @@ class _NotificationBell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     final showBadge = count > 0;
     final display = count > 99 ? '99+' : count.toString();
 
@@ -509,18 +491,21 @@ class _NotificationBell extends StatelessWidget {
       children: [
         IconButton(
           onPressed: loading ? null : onTap,
-          icon: const Icon(Icons.notifications_none_rounded,
-              color: kInk, size: 28),
+          icon: Icon(Icons.notifications_none_rounded,
+              color: colors.textPrimary, size: 28),
           tooltip: 'Notificaciones',
         ),
         if (loading)
-          const Positioned(
+          Positioned(
             right: 10,
             top: 10,
             child: SizedBox(
               width: 14,
               height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: colors.primaryButton,
+              ),
             ),
           ),
         if (!loading && showBadge)
@@ -528,14 +513,14 @@ class _NotificationBell extends StatelessWidget {
             right: 6,
             top: 6,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.red,
+                color: context.isDark
+                    ? const Color(0xFFC35B5B)
+                    : Colors.red,
                 borderRadius: BorderRadius.circular(12),
               ),
-              constraints:
-                  const BoxConstraints(minWidth: 20, minHeight: 18),
+              constraints: const BoxConstraints(minWidth: 20, minHeight: 18),
               alignment: Alignment.center,
               child: Text(
                 display,
@@ -567,6 +552,9 @@ class _PillButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final buttonTextColor = context.isDark ? Colors.white : colors.textPrimary;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: SizedBox(
@@ -575,7 +563,7 @@ class _PillButton extends StatelessWidget {
         child: FilledButton(
           style: FilledButton.styleFrom(
             backgroundColor: color,
-            foregroundColor: kInk,
+            foregroundColor: buttonTextColor,
             shape: const StadiumBorder(),
             elevation: 0,
           ),
@@ -583,14 +571,14 @@ class _PillButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 24, color: kInk),
+              Icon(icon, size: 24, color: buttonTextColor),
               const SizedBox(width: 12),
               Text(
                 text,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: kInk,
+                  color: buttonTextColor,
                 ),
               ),
             ],

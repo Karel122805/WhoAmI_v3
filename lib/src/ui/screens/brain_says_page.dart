@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../theme.dart';
 import 'game_page.dart';
 
 class BrainSaysPage extends StatefulWidget {
@@ -22,11 +23,6 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
   int highlightedIndex = -1;
   bool paused = false;
 
-  final Color kPurple = const Color(0xFFD6A7F4);
-  final Color kBlue = const Color(0xFF9ED3FF);
-  final Color kRed = const Color(0xFFFFB3B3);
-  final Color kText = const Color(0xFF111111);
-
   @override
   void initState() {
     super.initState();
@@ -36,53 +32,67 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
   }
 
   Future<void> _showStartDialog() async {
+    final colors = context.appColors;
+
     await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        backgroundColor: Colors.white,
-        title: const Text(
+        backgroundColor: colors.cardBackground,
+        title: Text(
           '¿Listo para comenzar?',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: colors.textPrimary,
+          ),
           textAlign: TextAlign.center,
         ),
-        content: const Text(
+        content: Text(
           'Prepárate para poner a prueba tu memoria.',
-          style: TextStyle(color: Colors.black87, fontSize: 15),
+          style: TextStyle(
+            color: colors.textSecondary,
+            fontSize: 15,
+          ),
           textAlign: TextAlign.center,
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             style: TextButton.styleFrom(
-              backgroundColor: const Color(0xFFFFB3B3),
-              foregroundColor: Colors.black,
+              backgroundColor: colors.emergency,
+              foregroundColor: colors.emergencyText,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
             ),
             onPressed: () {
-              Navigator.pop(context);        // Cierra el diálogo
-              Navigator.pop(context);        // 🔥 Sale del juego → vuelve a GamesPage
+              Navigator.pop(context);
+              Navigator.pop(context);
             },
-            child: const Text('Salir al menú', style: TextStyle(fontSize: 14)),
+            child: const Text(
+              'Salir al menú',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
           ),
           TextButton(
             style: TextButton.styleFrom(
-              backgroundColor: Color(0xFF9ED3FF),
-              foregroundColor: Colors.black,
+              backgroundColor: colors.primaryButton,
+              foregroundColor: colors.primaryButtonText,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
             ),
             onPressed: () {
               Navigator.pop(context);
               _startGame();
             },
-            child: const Text('Iniciar juego', style: TextStyle(fontSize: 14)),
+            child: const Text(
+              'Iniciar juego',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
@@ -115,6 +125,7 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
       if (!mounted || paused) return;
       setState(() => highlightedIndex = index);
       await Future.delayed(const Duration(milliseconds: 600));
+      if (!mounted) return;
       setState(() => highlightedIndex = -1);
       await Future.delayed(const Duration(milliseconds: 300));
     }
@@ -122,7 +133,7 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
     showingPattern = false;
     userTurn = true;
     userInput.clear();
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   void onTileTap(int index) async {
@@ -130,6 +141,7 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
 
     setState(() => highlightedIndex = index);
     await Future.delayed(const Duration(milliseconds: 200));
+    if (!mounted) return;
     setState(() => highlightedIndex = -1);
 
     userInput.add(index);
@@ -170,19 +182,19 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return GameEndModal(
           levelReached: levelReached,
           starRating: starRating,
           onRestart: () {
-            Navigator.pop(context);
+            Navigator.pop(dialogContext);
             _startGame();
           },
           onMenu: () {
-            Navigator.pop(context);   // Cierra el dialogo
-            Navigator.pop(context);   // 🔥 Sale hacia GamesPage
+            Navigator.pop(dialogContext);
+            Navigator.pop(context);
           },
-          modalButtonColor: kPurple,
+          modalButtonColor: context.appColors.secondaryButton,
         );
       },
     );
@@ -194,53 +206,76 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
     required String noText,
     required String yesText,
   }) async {
+    final colors = context.appColors;
     bool result = false;
+
     await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        backgroundColor: Colors.white,
-        title: Text(title,
-            style: TextStyle(
-                fontWeight: FontWeight.bold, color: kText, fontSize: 18)),
-        content: Text(content,
-            style: TextStyle(color: kText, fontSize: 15),
-            textAlign: TextAlign.center),
+        backgroundColor: colors.cardBackground,
+        title: Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: colors.textPrimary,
+            fontSize: 18,
+          ),
+        ),
+        content: Text(
+          content,
+          style: TextStyle(
+            color: colors.textSecondary,
+            fontSize: 15,
+          ),
+          textAlign: TextAlign.center,
+        ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             style: TextButton.styleFrom(
-              backgroundColor: kBlue,
-              foregroundColor: Colors.black,
+              backgroundColor: colors.primaryButton,
+              foregroundColor: colors.primaryButtonText,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 10,
+              ),
             ),
             onPressed: () => Navigator.pop(context),
-            child: Text(noText, style: const TextStyle(fontSize: 14)),
+            child: Text(
+              noText,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
           ),
           TextButton(
             style: TextButton.styleFrom(
-              backgroundColor: kRed,
-              foregroundColor: Colors.black,
+              backgroundColor: colors.emergency,
+              foregroundColor: colors.emergencyText,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 10,
+              ),
             ),
             onPressed: () {
               result = true;
               Navigator.pop(context);
             },
-            child: Text(yesText, style: const TextStyle(fontSize: 14)),
+            child: Text(
+              yesText,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
     );
+
     return result;
   }
 
@@ -264,56 +299,90 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
   }
 
   Future<void> _onPause() async {
+    final colors = context.appColors;
     paused = true;
+
     final restart = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        backgroundColor: Colors.white,
-        title: Text('Juego en pausa',
-            style: TextStyle(
-                fontWeight: FontWeight.bold, color: kText, fontSize: 18)),
-        content: Text('¿Qué deseas hacer?',
-            style: TextStyle(color: kText, fontSize: 15),
-            textAlign: TextAlign.center),
+        backgroundColor: colors.cardBackground,
+        title: Text(
+          'Juego en pausa',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: colors.textPrimary,
+            fontSize: 18,
+          ),
+        ),
+        content: Text(
+          '¿Qué deseas hacer?',
+          style: TextStyle(
+            color: colors.textSecondary,
+            fontSize: 15,
+          ),
+          textAlign: TextAlign.center,
+        ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             style: TextButton.styleFrom(
-              backgroundColor: kBlue,
-              foregroundColor: Colors.black,
+              backgroundColor: colors.primaryButton,
+              foregroundColor: colors.primaryButtonText,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 10,
+              ),
             ),
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Continuar', style: TextStyle(fontSize: 14)),
+            child: const Text(
+              'Continuar',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
           ),
           TextButton(
             style: TextButton.styleFrom(
-              backgroundColor: kRed,
-              foregroundColor: Colors.black,
+              backgroundColor: colors.emergency,
+              foregroundColor: colors.emergencyText,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 10,
+              ),
             ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Reiniciar', style: TextStyle(fontSize: 14)),
+            child: const Text(
+              'Reiniciar',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
     );
+
     paused = false;
     if (restart == true) _startGame();
   }
 
+  Color _tileBaseColor(BuildContext context) {
+    final colors = context.appColors;
+    return context.isDark ? colors.inputFill : colors.chipBackground;
+  }
+
+  Color _tileActiveColor(BuildContext context) {
+    final colors = context.appColors;
+    return showingPattern ? colors.primaryButton : colors.secondaryButton;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     final tileCount = gridSize;
     final size = MediaQuery.of(context).size;
     final gridSide = sqrt(tileCount).ceil();
@@ -321,30 +390,36 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
     return WillPopScope(
       onWillPop: () async {
         if (await _onWillPop()) {
-          Navigator.pop(context);  // 🔥 Regresa al menú de juegos
+          Navigator.pop(context);
         }
         return false;
       },
       child: Scaffold(
+        backgroundColor: colors.pageBackground,
         appBar: AppBar(
           centerTitle: true,
-          title: const Text('Colores',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black,
+          title: Text(
+            'Colores',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: colors.textPrimary,
+            ),
+          ),
+          backgroundColor: colors.pageBackground,
+          foregroundColor: colors.textPrimary,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
+            icon: Icon(Icons.arrow_back, color: colors.textPrimary),
             onPressed: () async {
               if (await _onWillPop()) {
-                Navigator.pop(context); // 🔥 Vuelve sin loop
+                Navigator.pop(context);
               }
             },
           ),
         ),
-
         body: Center(
           child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -355,57 +430,96 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
                       : userTurn
                           ? 'Repite el patrón'
                           : 'Esperando...',
-                  style:
-                      const TextStyle(fontSize: 20, color: Colors.black87),
+                  style: TextStyle(
+                    fontSize: 20,
+                    color: colors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 15),
-                Text('Nivel: $round  |  Puntuación: $score',
-                    style: const TextStyle(
-                        fontSize: 18, color: Colors.black54)),
-                const SizedBox(height: 20),
                 Container(
-                  padding: const EdgeInsets.all(12),
-                  constraints: BoxConstraints(maxWidth: size.width),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.cardBackground,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: colors.border),
+                  ),
+                  child: Text(
+                    'Nivel: $round  |  Puntuación: $score',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: colors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Container(
+                  width: min(size.width - 32, 420),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: colors.cardBackground,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: colors.border),
+                    boxShadow: context.isDark
+                        ? []
+                        : [
+                            BoxShadow(
+                              color: colors.textPrimary.withValues(alpha: 0.06),
+                              blurRadius: 14,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                  ),
                   child: GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: tileCount,
-                    gridDelegate:
-                        SliverGridDelegateWithFixedCrossAxisCount(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: gridSide,
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
                       childAspectRatio: 1.0,
                     ),
                     itemBuilder: (context, index) {
-                      bool isActive = index == highlightedIndex;
+                      final isActive = index == highlightedIndex;
+                      final tileColor = isActive
+                          ? _tileActiveColor(context)
+                          : _tileBaseColor(context);
+
                       return GestureDetector(
                         onTap: () => onTileTap(index),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           decoration: BoxDecoration(
-                            color: isActive
-                                ? showingPattern
-                                    ? Colors.lightBlueAccent
-                                    : Colors.purpleAccent.withOpacity(0.6)
-                                : Colors.grey.shade300,
+                            color: tileColor,
                             borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isActive
+                                  ? colors.textPrimary.withValues(alpha: 0.12)
+                                  : colors.border,
+                              width: isActive ? 1.8 : 1.1,
+                            ),
                             boxShadow: isActive
                                 ? [
                                     BoxShadow(
-                                      color:
-                                          Colors.black26.withOpacity(0.4),
-                                      blurRadius: 10,
+                                      color: tileColor.withValues(alpha: 0.35),
+                                      blurRadius: 12,
                                       offset: const Offset(0, 4),
-                                    )
+                                    ),
                                   ]
                                 : [
                                     BoxShadow(
-                                      color:
-                                          Colors.black.withOpacity(0.1),
-                                      blurRadius: 4,
+                                      color: colors.textPrimary.withValues(
+                                        alpha: context.isDark ? 0.04 : 0.08,
+                                      ),
+                                      blurRadius: 5,
                                       offset: const Offset(0, 2),
-                                    )
+                                    ),
                                   ],
                           ),
                         ),
@@ -414,43 +528,62 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
                   ),
                 ),
                 const SizedBox(height: 25),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 16,
+                  runSpacing: 12,
                   children: [
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: kPurple,
-                        foregroundColor: Colors.black,
+                        backgroundColor: colors.secondaryButton,
+                        foregroundColor: colors.secondaryButtonText,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(25),
                         ),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 28, vertical: 12),
-                        elevation: 3,
+                          horizontal: 28,
+                          vertical: 12,
+                        ),
+                        elevation: context.isDark ? 0 : 3,
                       ),
                       onPressed: _onRestart,
-                      icon: const Icon(Icons.refresh, color: Colors.black),
-                      label: const Text('Reiniciar',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 15)),
+                      icon: Icon(
+                        Icons.refresh,
+                        color: colors.secondaryButtonText,
+                      ),
+                      label: const Text(
+                        'Reiniciar',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
                     ),
-                    const SizedBox(width: 16),
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: kRed,
-                        foregroundColor: Colors.black,
+                        backgroundColor: colors.emergency,
+                        foregroundColor: colors.emergencyText,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(25),
                         ),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 28, vertical: 12),
-                        elevation: 3,
+                          horizontal: 28,
+                          vertical: 12,
+                        ),
+                        elevation: context.isDark ? 0 : 3,
                       ),
                       onPressed: _onPause,
-                      icon: const Icon(Icons.pause, color: Colors.black),
-                      label: const Text('Pausa',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 15)),
+                      icon: Icon(
+                        Icons.pause,
+                        color: colors.emergencyText,
+                      ),
+                      label: const Text(
+                        'Pausa',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -464,18 +597,22 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
   }
 }
 
-// === MODAL DE FIN DE JUEGO ===
 class StarRatingWidget extends StatelessWidget {
   final double rating;
   final Color color;
-  const StarRatingWidget({super.key, required this.rating, required this.color});
+
+  const StarRatingWidget({
+    super.key,
+    required this.rating,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(3, (index) {
-        double diff = rating - index;
+        final diff = rating - index;
         IconData iconData;
         if (diff >= 0.75) {
           iconData = Icons.star;
@@ -507,62 +644,91 @@ class GameEndModal extends StatelessWidget {
   });
 
   String getLevelName(int level) {
-    if (level >= 10) return "¡Leyenda!";
-    if (level >= 7) return "Avanzado";
-    if (level >= 4) return "Intermedio";
-    return "Fácil";
+    if (level >= 10) return '¡Leyenda!';
+    if (level >= 7) return 'Avanzado';
+    if (level >= 4) return 'Intermedio';
+    return 'Fácil';
   }
 
   @override
   Widget build(BuildContext context) {
-    final String levelName = getLevelName(levelReached);
+    final colors = context.appColors;
+    final levelName = getLevelName(levelReached);
+
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      backgroundColor: Colors.white,
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      backgroundColor: colors.cardBackground,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
-          const Text('Partida Terminada',
-              style:
-                  TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          Text(
+            'Partida Terminada',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: colors.textPrimary,
+            ),
+          ),
           const SizedBox(height: 10),
-          Text('Llegaste al nivel $levelReached ($levelName).',
-              style: const TextStyle(fontSize: 16, color: Colors.black87),
-              textAlign: TextAlign.center),
+          Text(
+            'Llegaste al nivel $levelReached ($levelName).',
+            style: TextStyle(
+              fontSize: 16,
+              color: colors.textSecondary,
+            ),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 15),
-          StarRatingWidget(rating: starRating, color: Colors.amber),
+          const StarRatingWidget(
+            rating: 0,
+            color: Colors.transparent,
+          ),
+          StarRatingWidget(
+            rating: starRating,
+            color: Colors.amber,
+          ),
           const SizedBox(height: 20),
-          const Text('¿Quieres seguir jugando?',
-              style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.black87,
-                  fontWeight: FontWeight.w600)),
+          Text(
+            '¿Quieres seguir jugando?',
+            style: TextStyle(
+              fontSize: 16,
+              color: colors.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 15),
           ElevatedButton(
             onPressed: onRestart,
             style: ElevatedButton.styleFrom(
               backgroundColor: modalButtonColor,
-              foregroundColor: Colors.black,
+              foregroundColor: colors.secondaryButtonText,
               minimumSize: const Size(double.infinity, 45),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-              elevation: 4,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              elevation: context.isDark ? 0 : 4,
             ),
-            child: const Text('Sí, jugar de nuevo',
-                style:
-                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Sí, jugar de nuevo',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
           const SizedBox(height: 10),
           TextButton(
             onPressed: onMenu,
-            child: const Text('Salir al menú',
-                style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold)),
+            child: Text(
+              'Salir al menú',
+              style: TextStyle(
+                fontSize: 16,
+                color: colors.textPrimary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),

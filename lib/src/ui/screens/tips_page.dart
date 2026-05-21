@@ -13,9 +13,9 @@ class TipsPage extends StatefulWidget {
 class _TipsPageState extends State<TipsPage> {
   // COLORES PASTEL EXACTOS
   static const Color yellow = Color(0xFFFFF49F);
-  static const Color pink   = Color(0xFFFF9FA1);
-  static const Color blue   = Color(0xFF9ED3FF);
-  static const Color green  = Color(0xFF9EEE97);
+  static const Color pink = Color(0xFFFF9FA1);
+  static const Color blue = Color(0xFF9ED3FF);
+  static const Color green = Color(0xFF9EEE97);
   static const Color purple = Color(0xFFD99FFF);
 
   static const Color textColor = Color(0xFF111111);
@@ -125,13 +125,23 @@ class _TipsPageState extends State<TipsPage> {
     await _tts.setSpeechRate(0.5);
   }
 
+  // ✅ STOP centralizado (para volver al menú / back del sistema / dispose)
+  Future<void> _stopTts() async {
+    try {
+      await _tts.stop();
+    } catch (_) {
+      // ignorar errores del motor TTS para no romper UI
+    }
+  }
+
   // Cargar categoría
-  void _loadCategory(String cat) async {
-    await _tts.stop();
+  Future<void> _loadCategory(String cat) async {
+    await _stopTts();
     _selected = cat;
 
     final tips = List<String>.from(_tipsByCategory[cat]!)..shuffle(_rnd);
 
+    if (!mounted) return;
     setState(() {
       _visible = tips;
       _showCategoryMenu = false;
@@ -139,28 +149,32 @@ class _TipsPageState extends State<TipsPage> {
   }
 
   Future<void> _speak(String text) async {
-    await _tts.stop();
+    await _stopTts();
     await _tts.speak(text);
   }
 
   @override
   void dispose() {
-    _tts.stop();
+    _stopTts();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Consejos"),
-        centerTitle: true,
-        elevation: 0,
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (didPop) async {
+        // ✅ Si se sale con botón atrás/gesto, detiene audio
+        await _stopTts();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("Consejos"),
+          centerTitle: true,
+          elevation: 0,
+        ),
+        body: _showCategoryMenu ? _buildCategoryMenu() : _buildTipsView(),
       ),
-
-      body: _showCategoryMenu
-          ? _buildCategoryMenu()
-          : _buildTipsView(),
     );
   }
 
@@ -219,7 +233,6 @@ class _TipsPageState extends State<TipsPage> {
       child: Column(
         children: [
           const SizedBox(height: 10),
-
           Expanded(
             child: ListView.builder(
               itemCount: _visible.length,
@@ -238,10 +251,14 @@ class _TipsPageState extends State<TipsPage> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () => setState(() => _showCategoryMenu = true),
+              onPressed: () async {
+                await _stopTts(); // ✅ detener audio al volver al menú
+                if (!mounted) return;
+                setState(() => _showCategoryMenu = true);
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFE9D8FF),
-                foregroundColor: Color(0xFF6B2FAF),
+                foregroundColor: const Color(0xFF6B2FAF),
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(22),

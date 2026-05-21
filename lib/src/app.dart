@@ -1,8 +1,10 @@
 // lib/app.dart
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-// Temas y estilos globales
 import 'ui/theme.dart';
 
 // Pantalla raíz
@@ -17,11 +19,11 @@ import 'ui/screens/register_name_page.dart';
 import 'ui/screens/register_password_page.dart';
 import 'ui/screens/register_role_page.dart';
 
-// Pantallas principales (Homes por rol)
+// Home por rol
 import 'ui/screens/home_caregiver.dart';
 import 'ui/screens/home_consultant.dart';
 
-// Ajustes
+// Ajustes y perfil
 import 'ui/screens/settings_page.dart';
 import 'ui/screens/edit_profile_page.dart';
 
@@ -30,86 +32,152 @@ import 'ui/screens/patients_list_page.dart';
 import 'ui/screens/register_patient_page.dart';
 
 // Juegos
-import 'ui/screens/game_page.dart';       // Solo menú de juegos (GamesPage)
-import 'ui/screens/memorama_page.dart';   // Juego del memorama (MemoramaPage)
+import 'ui/screens/game_page.dart';
+import 'ui/screens/memorama_page.dart';
 
 // Notificaciones
-import 'ui/screens/notifications_page.dart'; // Nueva pantalla de notificaciones
+import 'ui/screens/notifications_page.dart';
 
-// 💬 Asistente de memoria (Gemini)
+// Asistente
 import 'ui/screens/assistant_page.dart';
 
-/// =============================================================
-/// APLICACIÓN PRINCIPAL WHO AM I?
-/// =============================================================
-/// Define el árbol de navegación, tema visual y localización.
-/// Gestiona el flujo de pantallas, registro, roles y funciones IA.
-/// =============================================================
-class WhoAmIApp extends StatelessWidget {
+// Accesibilidad
+import '../services/accessibility_service.dart';
+import 'core/accessibility/accessibility_controller.dart';
+
+class WhoAmIApp extends StatefulWidget {
   const WhoAmIApp({super.key});
 
   @override
+  State<WhoAmIApp> createState() => _WhoAmIAppState();
+}
+
+class _WhoAmIAppState extends State<WhoAmIApp> {
+  late final AccessibilityController a11y;
+  StreamSubscription<User?>? _authSub;
+
+  @override
+  void initState() {
+    super.initState();
+
+    a11y = AccessibilityController(AccessibilityService());
+
+    // Carga inicial
+    unawaited(_loadAccessibility());
+
+    // Cuando cambia la sesión, vuelve a cargar settings
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((_) {
+      unawaited(_loadAccessibility());
+    });
+  }
+
+  Future<void> _loadAccessibility() async {
+    try {
+      await a11y.init();
+    } catch (_) {
+      // Evita que la app se caiga si hay un error leyendo preferencias
+    }
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    a11y.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'WhoAmI?',
-      theme: appTheme,
+    return AnimatedBuilder(
+      animation: a11y,
+      builder: (context, _) {
+        final s = a11y.settings;
 
-      // Configuración de idioma y localización
-      supportedLocales: const [
-        Locale('es'),
-        Locale('es', 'MX'),
-        Locale('en'),
-      ],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      locale: const Locale('es', 'MX'),
+        const seed = kBlue;
 
-      // =============================================================
-      // RUTAS DE NAVEGACIÓN PRINCIPALES
-      // =============================================================
-      initialRoute: '/',
-      routes: {
-        // --- Raíz y flujo inicial ---
-        '/': (_) => const AuthGate(),
-        '/auth/choice': (_) => const ChoiceStart(),
-        '/login': (_) => const LoginPage(),
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'WhoAmI?',
 
-        // --- Registro de usuarios ---
-        '/register/name': (_) => const RegisterNamePage(),
-        '/register/password': (_) => const RegisterPasswordPage(),
-        '/register/role': (_) => const RegisterRolePage(),
+          // Light y dark separados correctamente
+          theme: buildAppTheme(
+            seedColor: seed,
+            darkMode: false,
+            simplified: s.simplified,
+          ),
+          darkTheme: buildAppTheme(
+            seedColor: seed,
+            darkMode: true,
+            simplified: s.simplified,
+          ),
+          themeMode: s.darkMode ? ThemeMode.dark : ThemeMode.light,
 
-        // --- Pantallas principales por rol ---
-        '/home/caregiver': (ctx) {
-          final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
-          return HomeCaregiverPage(displayName: args?['name'] as String?);
-        },
-        '/home/consultant': (ctx) {
-          final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
-          return HomeConsultantPage(displayName: args?['name'] as String?);
-        },
+          supportedLocales: const [
+            Locale('es'),
+            Locale('es', 'MX'),
+            Locale('en'),
+          ],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          locale: const Locale('es', 'MX'),
 
-        // --- Ajustes y perfil ---
-        '/settings': (_) => const SettingsPage(),
-        '/settings/edit-profile': (_) => const EditProfilePage(),
+          builder: (context, child) {
+            final mq = MediaQuery.of(context);
 
-        // --- Gestión de pacientes ---
-        PatientsListPage.route: (_) => const PatientsListPage(),
-        RegisterPatientPage.route: (_) => const RegisterPatientPage(),
+            return MediaQuery(
+              data: mq.copyWith(
+                textScaler: TextScaler.linear(s.textScale),
+              ),
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                child: child ?? const SizedBox.shrink(),
+              ),
+            );
+          },
 
-        // --- Juegos ---
-        GamesPage.route: (_) => const GamesPage(),
-        MemoramaPage.route: (_) => const MemoramaPage(),
+          initialRoute: '/',
+          routes: {
+            '/': (_) => const AuthGate(),
 
-        // --- Notificaciones ---
-        NotificationsPage.route: (_) => const NotificationsPage(),
+            '/auth/choice': (_) => const ChoiceStart(),
+            '/login': (_) => const LoginPage(),
 
-        // --- Chat asistente IA (Gemini) ---
-        AssistantPage.route: (_) => const AssistantPage(),
+            '/register/name': (_) => const RegisterNamePage(),
+            '/register/password': (_) => const RegisterPasswordPage(),
+            '/register/role': (_) => const RegisterRolePage(),
+
+            '/home/caregiver': (ctx) {
+              final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
+              return HomeCaregiverPage(
+                displayName: args?['name'] as String?,
+              );
+            },
+
+            '/home/consultant': (ctx) {
+              final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
+              return HomeConsultantPage(
+                displayName: args?['name'] as String?,
+              );
+            },
+
+            '/settings': (_) => SettingsPage(a11y: a11y),
+            '/settings/edit-profile': (_) => const EditProfilePage(),
+
+            PatientsListPage.route: (_) => const PatientsListPage(),
+            RegisterPatientPage.route: (_) => const RegisterPatientPage(),
+
+            GamesPage.route: (_) => const GamesPage(),
+            MemoramaPage.route: (_) => const MemoramaPage(),
+
+            NotificationsPage.route: (_) => const NotificationsPage(),
+
+            AssistantPage.route: (_) => const AssistantPage(),
+          },
+        );
       },
     );
   }

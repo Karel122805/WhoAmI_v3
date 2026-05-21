@@ -20,6 +20,7 @@ class _RegisterPatientPageState extends State<RegisterPatientPage> {
 
   String? get caregiverId => FirebaseAuth.instance.currentUser?.uid;
   String? _selectedPatientId;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -46,51 +47,95 @@ class _RegisterPatientPageState extends State<RegisterPatientPage> {
     return '';
   }
 
+  Future<void> _savePatient() async {
+    if (_selectedPatientId == null || caregiverId == null || _saving) return;
+
+    setState(() => _saving = true);
+
+    try {
+      await _svc.addPatientToCaregiver(
+        caregiverId: caregiverId!,
+        patientUserId: _selectedPatientId!,
+      );
+
+      if (!mounted) return;
+      await _showResultDialog(
+        context,
+        'Hecho',
+        'Paciente agregado correctamente.',
+        closePageOnAccept: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      await _showResultDialog(
+        context,
+        'Error',
+        e.toString(),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     if (caregiverId == null) {
       return Scaffold(
+        backgroundColor: colors.pageBackground,
         appBar: AppBar(
-          backgroundColor: Colors.white,
+          backgroundColor: colors.pageBackground,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: kInk),
+            icon: Icon(Icons.arrow_back, color: colors.textPrimary),
             onPressed: () => Navigator.maybePop(context),
           ),
           centerTitle: true,
-          title: const Text(
+          title: Text(
             'Regístrate',
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
-              color: kInk,
+              color: colors.textPrimary,
             ),
           ),
         ),
-        body: const Center(child: Text('Inicia sesión para continuar')),
+        body: Center(
+          child: Text(
+            'Inicia sesión para continuar',
+            style: TextStyle(
+              color: colors.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
       );
     }
 
-    final q = _searchCtrl.text;
+    final q = _searchCtrl.text.trim();
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: colors.pageBackground,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: colors.pageBackground,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: kInk),
+          icon: Icon(Icons.arrow_back, color: colors.textPrimary),
           onPressed: () => Navigator.maybePop(context),
         ),
         centerTitle: true,
-        title: const Text(
+        title: Text(
           'Registrar nuevo paciente',
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w700,
-            color: kInk,
+            color: colors.textPrimary,
           ),
         ),
       ),
@@ -102,69 +147,81 @@ class _RegisterPatientPageState extends State<RegisterPatientPage> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  
-                  
-
                   const SizedBox(height: 18),
 
-                  // ===== Campo de búsqueda =====
                   TextField(
                     controller: _searchCtrl,
                     textInputAction: TextInputAction.search,
+                    style: TextStyle(color: colors.textPrimary),
                     decoration: InputDecoration(
                       hintText: 'Buscar consultante',
+                      hintStyle: TextStyle(color: colors.textSecondary),
                       suffixIcon: _searchCtrl.text.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.close),
+                              icon: Icon(Icons.close, color: colors.textSecondary),
                               onPressed: () => _searchCtrl.clear(),
                             )
-                          : const Icon(Icons.search),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                          : Icon(Icons.search, color: colors.textSecondary),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 10,
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 12),
 
-                  // ===== Lista de consultantes =====
                   Expanded(
                     child: StreamBuilder<
                         List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
                       stream: _svc.streamUnassignedConsultants(q: q),
                       builder: (context, snap) {
                         if (snap.hasError) {
-                          return Center(child: Text('Error: ${snap.error}'));
-                        }
-                        if (snap.connectionState == ConnectionState.waiting) {
-                          return const Center(
-                              child: CircularProgressIndicator());
+                          return Center(
+                            child: Text(
+                              'Error: ${snap.error}',
+                              style: TextStyle(color: colors.textPrimary),
+                              textAlign: TextAlign.center,
+                            ),
+                          );
                         }
 
-                        final docs = snap.data ?? [];
+                        if (snap.connectionState == ConnectionState.waiting) {
+                          return Center(
+                            child: CircularProgressIndicator(
+                              color: colors.primaryButton,
+                            ),
+                          );
+                        }
+
+                        final docs = (snap.data ?? [])
+                            .where((doc) => (doc.data()['role'] ?? '') == 'Consultante')
+                            .toList();
+
                         if (docs.isEmpty) {
-                          return const Center(child: Text('Sin resultados'));
+                          return Center(
+                            child: Text(
+                              'Sin resultados',
+                              style: TextStyle(
+                                color: colors.textSecondary,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          );
                         }
 
                         return ListView.separated(
                           itemCount: docs.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 8),
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (context, i) {
                             final data = docs[i].data();
-                            if ((data['role'] ?? '') != 'Consultante') {
-                              return const SizedBox.shrink();
-                            }
-
                             final uid = docs[i].id;
+
                             final name = (data['displayName'] ??
                                     '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}')
                                 .toString()
                                 .trim();
+
                             final birthday = _fmtBirthday(data['birthday']);
 
                             return _PatientResultTile(
@@ -185,51 +242,37 @@ class _RegisterPatientPageState extends State<RegisterPatientPage> {
 
                   const SizedBox(height: 12),
 
-                  // ===== Botón Guardar =====
                   Row(
                     children: [
                       Expanded(
-                        child: GestureDetector(
-                          onTap: () async {
-                            if (_selectedPatientId == null) return;
-                            final id = caregiverId!;
-                            try {
-                              await _svc.addPatientToCaregiver(
-                                caregiverId: id,
-                                patientUserId: _selectedPatientId!,
-                              );
-                              if (!mounted) return;
-                              _showDialog(context, 'Hecho',
-                                  'Paciente agregado correctamente.');
-                            } catch (e) {
-                              if (!mounted) return;
-                              _showDialog(context, 'Error', e.toString());
-                            }
-                          },
-                          child: Container(
-                            alignment: Alignment.center,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            decoration: BoxDecoration(
-                              color: _selectedPatientId == null
-                                  ? const Color(0xFFDCEEFF)
-                                  : const Color(0xFF9ED3FF),
+                        child: FilledButton.icon(
+                          onPressed:
+                              (_selectedPatientId == null || _saving) ? null : _savePatient,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: colors.primaryButton,
+                            foregroundColor: colors.primaryButtonText,
+                            disabledBackgroundColor:
+                                colors.primaryButton.withValues(alpha: 0.45),
+                            disabledForegroundColor:
+                                colors.primaryButtonText.withValues(alpha: 0.75),
+                            minimumSize: const Size.fromHeight(52),
+                            shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(30),
                             ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: const [
-                                Icon(Icons.save, size: 18, color: kInk),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Guardar',
-                                  style: TextStyle(
-                                    color: kInk,
-                                    fontWeight: FontWeight.w600,
+                          ),
+                          icon: _saving
+                              ? SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: colors.primaryButtonText,
                                   ),
-                                ),
-                              ],
-                            ),
+                                )
+                              : const Icon(Icons.save, size: 18),
+                          label: Text(
+                            _saving ? 'Guardando…' : 'Guardar',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ),
                       ),
@@ -238,37 +281,23 @@ class _RegisterPatientPageState extends State<RegisterPatientPage> {
 
                   const SizedBox(height: 10),
 
-                  // ===== Botón Cancelar =====
                   Row(
                     children: [
                       Expanded(
-                        child: GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            alignment: Alignment.center,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            decoration: BoxDecoration(
-                              color: _selectedPatientId == null
-                                  ? const Color(0xFFFFE4E4)
-                                  : const Color(0xFFFFB3B3),
+                        child: FilledButton.icon(
+                          onPressed: () => Navigator.pop(context),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: colors.emergency,
+                            foregroundColor: colors.emergencyText,
+                            minimumSize: const Size.fromHeight(52),
+                            shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(30),
                             ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: const [
-                                Icon(Icons.cancel_outlined,
-                                    size: 18, color: kInk),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Cancelar',
-                                  style: TextStyle(
-                                    color: kInk,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
+                          ),
+                          icon: const Icon(Icons.cancel_outlined, size: 18),
+                          label: const Text(
+                            'Cancelar',
+                            style: TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ),
                       ),
@@ -285,31 +314,51 @@ class _RegisterPatientPageState extends State<RegisterPatientPage> {
     );
   }
 
-  void _showDialog(BuildContext context, String title, String message) {
-    showDialog(
+  Future<void> _showResultDialog(
+    BuildContext context,
+    String title,
+    String message, {
+    bool closePageOnAccept = false,
+  }) async {
+    final colors = context.appColors;
+
+    await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFFF4EDFB),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: colors.cardBackground,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
         title: Text(
           title,
-          style: const TextStyle(color: kInk, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            color: colors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
         ),
-        content: Text(message, style: const TextStyle(color: kInk)),
+        content: Text(
+          message,
+          style: TextStyle(color: colors.textPrimary),
+        ),
         actions: [
           Center(
             child: FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor: kPurple,
-                foregroundColor: kInk,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+                backgroundColor: colors.secondaryButton,
+                foregroundColor: colors.secondaryButtonText,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30)),
+                  borderRadius: BorderRadius.circular(30),
+                ),
               ),
               onPressed: () {
                 Navigator.of(ctx, rootNavigator: true).pop();
-                Navigator.pop(context, true);
+                if (closePageOnAccept) {
+                  Navigator.pop(context, true);
+                }
               },
               child: const Text('Aceptar'),
             ),
@@ -320,7 +369,6 @@ class _RegisterPatientPageState extends State<RegisterPatientPage> {
   }
 }
 
-// ===== Tarjeta de resultado =====
 class _PatientResultTile extends StatelessWidget {
   const _PatientResultTile({
     required this.name,
@@ -336,17 +384,31 @@ class _PatientResultTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     return GestureDetector(
       onTap: onAdd,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
-          color: selected ? kBlue.withOpacity(0.3) : Colors.white,
+          color: selected
+              ? colors.primaryButton.withValues(alpha: 0.18)
+              : colors.cardBackground,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: selected ? kBlue : Colors.black12,
+            color: selected ? colors.primaryButton : colors.border,
             width: selected ? 2 : 1,
           ),
+          boxShadow: context.isDark
+              ? []
+              : [
+                  BoxShadow(
+                    color: colors.textPrimary.withValues(alpha: 0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
         ),
         child: Row(
           children: [
@@ -356,21 +418,24 @@ class _PatientResultTile extends StatelessWidget {
                 children: [
                   Text(
                     name,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 16),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                      color: colors.textPrimary,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   if (subtitle.isNotEmpty)
                     Text(
                       subtitle,
-                      style: const TextStyle(color: Colors.black54),
+                      style: TextStyle(color: colors.textSecondary),
                     ),
                 ],
               ),
             ),
             Icon(
               Icons.check_circle,
-              color: selected ? kBlue : Colors.grey.shade300,
+              color: selected ? colors.primaryButton : colors.border,
               size: 26,
             ),
           ],

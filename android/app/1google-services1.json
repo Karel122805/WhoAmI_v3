@@ -22,14 +22,6 @@
           }
         },
         {
-          "client_id": "103480993491-pdfpjps2p44ehff8acamthdpq04cbsga.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.example.whoami_app",
-            "certificate_hash": "6788e0db84fe7a3d3bcbb0c98c515ba020431150"
-          }
-        },
-        {
           "client_id": "103480993491-r0m6052fngmo9k5hikkf2iqnn432p29r.apps.googleusercontent.com",
           "client_type": 3
         }

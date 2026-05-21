@@ -1,10 +1,15 @@
 // lib/src/ui/screens/login_page.dart
 import 'dart:async';
 import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+
 import 'package:whoami_app/services/fcm_token_service.dart';
 
 import '../brand_logo.dart';
@@ -12,6 +17,7 @@ import '../theme.dart';
 import 'home_caregiver.dart';
 import 'home_consultant.dart';
 import 'choice_start.dart';
+import 'register_name_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -25,6 +31,7 @@ class _LoginPageState extends State<LoginPage> {
   final _email = TextEditingController();
   final _pass = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+
   bool _loading = false;
   bool _obscurePass = true;
 
@@ -34,18 +41,21 @@ class _LoginPageState extends State<LoginPage> {
 
   Timer? _resetTimer;
   int _resetSecondsLeft = 0;
+
   Timer? _pulseTimer;
   bool _pulseUp = false;
   static const int _pulseThreshold = 10;
 
   final GlobalKey<_ShakeWidgetState> _passShakeKey =
       GlobalKey<_ShakeWidgetState>();
+
   bool _passwordError = false;
   String? _passwordErrorText;
 
   @override
   void initState() {
     super.initState();
+    _prepareAuthForWeb();
     _loadCooldowns().then((_) => _startResetCountdownIfNeeded());
   }
 
@@ -53,8 +63,19 @@ class _LoginPageState extends State<LoginPage> {
   void dispose() {
     _resetTimer?.cancel();
     _pulseTimer?.cancel();
+    _email.dispose();
+    _pass.dispose();
     super.dispose();
   }
+
+  Future<void> _prepareAuthForWeb() async {
+    if (!kIsWeb) return;
+    try {
+      await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+    } catch (_) {}
+  }
+
+  String _normalizeEmail(String v) => v.trim().toLowerCase();
 
   Future<void> _loadCooldowns() async {
     final prefs = await SharedPreferences.getInstance();
@@ -73,17 +94,21 @@ class _LoginPageState extends State<LoginPage> {
   void _startResetCountdownIfNeeded() {
     _resetTimer?.cancel();
     final now = DateTime.now();
+
     if (_lastResetEmailAt == null) {
       _resetSecondsLeft = 0;
       _stopPulse();
-      setState(() {});
+      if (mounted) setState(() {});
       return;
     }
+
     final elapsed = now.difference(_lastResetEmailAt!);
     final remaining = _resetCooldown - elapsed;
     _resetSecondsLeft = remaining.isNegative ? 0 : remaining.inSeconds;
+
     _updatePulseState();
-    setState(() {});
+    if (mounted) setState(() {});
+
     if (_resetSecondsLeft > 0) {
       _resetTimer = Timer.periodic(const Duration(seconds: 1), (t) {
         if (!mounted) return;
@@ -124,24 +149,37 @@ class _LoginPageState extends State<LoginPage> {
     _pulseUp = false;
   }
 
+  Map<String, String> _splitName(String? displayName) {
+    final s = (displayName ?? '').trim();
+    if (s.isEmpty) return {'firstName': '', 'lastName': ''};
+    final parts = s.split(RegExp(r'\s+'));
+    if (parts.length == 1) return {'firstName': parts.first, 'lastName': ''};
+    return {'firstName': parts.first, 'lastName': parts.sublist(1).join(' ')};
+  }
+
   Future<void> _ensureUserProfile(User user) async {
     final db = FirebaseFirestore.instance;
     final ref = db.collection('users').doc(user.uid);
     final snap = await ref.get();
     final m = snap.data() ?? <String, dynamic>{};
 
-    final firstName = ((m['firstName'] ?? '') as String).trim();
-    final lastName = ((m['lastName'] ?? '') as String).trim();
+    final googleName = _splitName(user.displayName);
+
+    final existingFirst = ((m['firstName'] ?? '') as String).trim();
+    final existingLast = ((m['lastName'] ?? '') as String).trim();
+
+    final firstName =
+        existingFirst.isNotEmpty ? existingFirst : (googleName['firstName'] ?? '');
+    final lastName =
+        existingLast.isNotEmpty ? existingLast : (googleName['lastName'] ?? '');
 
     String display = ((m['displayName'] ?? '') as String).trim();
     if (display.isEmpty) {
-      if (firstName.isNotEmpty || lastName.isNotEmpty) {
-        display = '$firstName $lastName'.trim();
-      } else {
-        display =
-            (user.displayName ?? user.email?.split('@').first ?? 'Usuario')
-                .trim();
-      }
+      final byName = '$firstName $lastName'.trim();
+      display = byName.isNotEmpty
+          ? byName
+          : (user.displayName ?? user.email?.split('@').first ?? 'Usuario')
+              .trim();
     }
 
     final payload = <String, dynamic>{
@@ -150,6 +188,10 @@ class _LoginPageState extends State<LoginPage> {
       'lastName': lastName,
       'displayName': display,
       'displayNameLower': display.toLowerCase(),
+      'photoURL': user.photoURL ?? (m['photoURL'] ?? ''),
+      'authProvider': user.providerData.isNotEmpty
+          ? user.providerData.first.providerId
+          : (m['authProvider'] ?? ''),
       'role': (m['role'] ?? ''),
       'updatedAt': FieldValue.serverTimestamp(),
       if (!snap.exists) 'createdAt': FieldValue.serverTimestamp(),
@@ -157,29 +199,41 @@ class _LoginPageState extends State<LoginPage> {
 
     await ref.set(payload, SetOptions(merge: true));
   }
+
   String? _emailRule(String? v) {
-    final s = v?.trim() ?? '';
+    final s = (v ?? '').trim();
     if (s.isEmpty) return 'Requerido';
     final ok = RegExp(r'^[^@]+@[^@]+\.[^@]+$').hasMatch(s);
     return ok ? null : 'Ingresa un correo válido';
   }
 
-  Future<void> _showDialogMsg(String title, String msg,
-      {bool showVerifyButton = false, String? email}) async {
+  Future<void> _showDialogMsg(
+    String title,
+    String msg, {
+    bool showVerifyButton = false,
+    String? email,
+  }) async {
+    if (!mounted) return;
+
+    final colors = context.appColors;
+
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFFF3E9FF),
+        backgroundColor: colors.elevatedCard,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
           title,
-          style: const TextStyle(
-              fontWeight: FontWeight.w700, color: Colors.black, fontSize: 18),
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: colors.textPrimary,
+            fontSize: 18,
+          ),
           textAlign: TextAlign.center,
         ),
         content: Text(
           msg,
-          style: const TextStyle(color: Colors.black87, fontSize: 15),
+          style: TextStyle(color: colors.textPrimary, fontSize: 15),
           textAlign: TextAlign.center,
         ),
         actionsAlignment: MainAxisAlignment.center,
@@ -187,42 +241,50 @@ class _LoginPageState extends State<LoginPage> {
           if (showVerifyButton && email != null)
             TextButton(
               style: TextButton.styleFrom(
-                backgroundColor: const Color(0xFF9ED3FF),
+                backgroundColor: colors.primaryButton,
+                foregroundColor: colors.primaryButtonText,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
-              child: const Text('Enviar verificación',
-                  style: TextStyle(
-                      color: Colors.black, fontWeight: FontWeight.bold)),
+              child: const Text(
+                'Enviar verificación',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               onPressed: () async {
                 try {
                   final user = FirebaseAuth.instance.currentUser;
                   if (user != null && !user.emailVerified) {
                     await user.sendEmailVerification();
-                    Navigator.pop(context);
+                    if (Navigator.canPop(context)) Navigator.pop(context);
                     await _showDialogMsg(
                       'Correo enviado',
-                      'Se ha enviado un correo de verificación a $email. '
+                      'Se ha enviado un correo de verificación a $email.\n'
                       'Revisa tu bandeja de entrada.',
                     );
                   }
-                } catch (e) {
-                  Navigator.pop(context);
-                  await _showDialogMsg('Error',
-                      'No se pudo enviar el correo de verificación.');
+                } catch (_) {
+                  if (Navigator.canPop(context)) Navigator.pop(context);
+                  await _showDialogMsg(
+                    'Error',
+                    'No se pudo enviar el correo de verificación.',
+                  );
                 }
               },
             ),
           TextButton(
             style: TextButton.styleFrom(
-              backgroundColor: kPurple,
-              foregroundColor: Colors.black,
+              backgroundColor: colors.secondaryButton,
+              foregroundColor: colors.secondaryButtonText,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             onPressed: () => Navigator.pop(context),
-            child: const Text('Aceptar',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Aceptar',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -230,23 +292,39 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _sendPasswordResetDialog() async {
+    if (!mounted) return;
+
+    final colors = context.appColors;
+
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFFF3E9FF),
+        backgroundColor: colors.elevatedCard,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text('Recuperar contraseña',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
-        content: const Text(
-            '¿Deseas enviar un correo para restablecer tu contraseña?'),
+        title: Text(
+          'Recuperar contraseña',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: colors.textPrimary,
+          ),
+        ),
+        content: Text(
+          '¿Deseas enviar un correo para restablecer tu contraseña?',
+          style: TextStyle(color: colors.textPrimary),
+        ),
         actions: [
           TextButton(
-            child: const Text('Cancelar', style: TextStyle(color: kPurple)),
+            child: Text(
+              'Cancelar',
+              style: TextStyle(color: colors.secondaryButton),
+            ),
             onPressed: () => Navigator.pop(context),
           ),
           TextButton(
             style: TextButton.styleFrom(
-                backgroundColor: kPurple, foregroundColor: Colors.black),
+              backgroundColor: colors.secondaryButton,
+              foregroundColor: colors.secondaryButtonText,
+            ),
             child: const Text('Enviar'),
             onPressed: () {
               Navigator.pop(context);
@@ -258,11 +336,8 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ------------------------------------------------------------------
-  // 🔥🔥🔥 NUEVA VERSIÓN — SOLO FIREBASEAUTH (corregida)
-  // ------------------------------------------------------------------
   Future<void> _sendPasswordReset() async {
-    final email = _email.text.trim();
+    final email = _normalizeEmail(_email.text);
 
     if (email.isEmpty) {
       await _showDialogMsg('Atención', 'Escribe tu correo para continuar.');
@@ -270,93 +345,268 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     try {
-      // Verificar si FirebaseAuth reconoce este correo
-      final methods =
-          await FirebaseAuth.instance.fetchSignInMethodsForEmail(email);
-
-      if (methods.isEmpty) {
-        await _showDialogMsg(
-          'Correo no registrado',
-          'No existe ninguna cuenta asociada a este correo.',
-        );
-        return;
-      }
-
-      // Enviar correo de recuperación
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
 
       await _saveResetTs(DateTime.now());
       _startResetCountdownIfNeeded();
 
       await _showDialogMsg(
-        'Correo enviado',
-        'Hemos enviado un enlace de recuperación a:\n$email\n\nRevisa tu bandeja de entrada.',
+        'Revisa tu correo',
+        'Si el correo está registrado, te enviamos un enlace para cambiar tu contraseña a:\n\n'
+        '$email\n\nSi no lo ves, revisa también SPAM.',
       );
     } on FirebaseAuthException catch (e) {
-      String msg = 'No se pudo enviar el correo de recuperación.';
+      String msg =
+          'No se pudo procesar la solicitud. Intenta nuevamente más tarde.';
 
       if (e.code == 'invalid-email') {
         msg = 'El correo ingresado no es válido.';
+      } else if (e.code == 'too-many-requests') {
+        msg = 'Demasiados intentos. Intenta más tarde.';
       }
 
       await _showDialogMsg('Error', msg);
+    } catch (_) {
+      await _showDialogMsg(
+        'Error',
+        'Ocurrió un error al solicitar el cambio de contraseña.',
+      );
     }
   }
 
-  // ------------------------------------------------------------------
-  // LOGIN
-  // ------------------------------------------------------------------
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    FocusScope.of(context).unfocus();
+  bool _isPasswordProvider(User u) =>
+      u.providerData.any((p) => p.providerId == 'password');
+
+  Future<void> _postLogin(User user) async {
+    final auth = FirebaseAuth.instance;
+    final firestore = FirebaseFirestore.instance;
+
+    if (_isPasswordProvider(user)) {
+      await user.reload();
+      final refreshed = auth.currentUser;
+      if (refreshed == null) {
+        await _showDialogMsg('Error', 'La sesión no se pudo refrescar.');
+        return;
+      }
+      if (!refreshed.emailVerified) {
+        await _showDialogMsg(
+          'Verifica tu correo',
+          'Tu cuenta aún no ha sido verificada.',
+          showVerifyButton: true,
+          email: refreshed.email,
+        );
+        await auth.signOut();
+        return;
+      }
+    }
+
+    if (!kIsWeb) {
+      try {
+        await FCMTokenService.initAndSaveToken();
+      } catch (_) {}
+    }
+
+    await _ensureUserProfile(user);
+
+    final snap = await firestore.collection('users').doc(user.uid).get();
+    final data = snap.data() ?? {};
+    final role = (data['role'] as String?)?.trim() ?? '';
+
+    final fullName =
+        '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'.trim();
+    final name = fullName.isEmpty
+        ? (user.displayName ?? user.email?.split('@').first ?? 'Usuario')
+        : fullName;
+
+    if (!mounted) return;
+
+    if (role == 'Cuidador') {
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        HomeCaregiverPage.route,
+        (_) => false,
+        arguments: {'name': name},
+      );
+    } else if (role == 'Consultante') {
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        HomeConsultantPage.route,
+        (_) => false,
+        arguments: {'name': name},
+      );
+    } else {
+      Navigator.pushNamed(
+        context,
+        RegisterNamePage.route,
+        arguments: {
+          'fromGoogle': true,
+          'uid': user.uid,
+          'email': user.email ?? '',
+          'displayName': user.displayName ?? '',
+          'photoURL': user.photoURL ?? '',
+          'firstName': (data['firstName'] ?? '') as String,
+          'lastName': (data['lastName'] ?? '') as String,
+        },
+      );
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    if (_loading) return;
+
     setState(() {
       _loading = true;
       _passwordError = false;
       _passwordErrorText = null;
     });
 
-    final email = _email.text.trim().toLowerCase();
+    try {
+      final auth = FirebaseAuth.instance;
+
+      if (kIsWeb) {
+        try {
+          await auth.setPersistence(Persistence.LOCAL);
+        } catch (_) {}
+
+        final provider = GoogleAuthProvider();
+        provider.setCustomParameters({'prompt': 'select_account'});
+
+        final res = await auth.signInWithPopup(provider);
+        final user = res.user;
+
+        if (user == null) {
+          await _showDialogMsg('Error', 'No se pudo iniciar sesión con Google.');
+          return;
+        }
+
+        await _postLogin(user);
+        return;
+      }
+
+      final googleSignIn = GoogleSignIn(scopes: ['email']);
+
+      try {
+        await googleSignIn.signOut();
+      } catch (_) {}
+
+      final googleUser = await googleSignIn.signIn();
+      if (googleUser == null) {
+        return;
+      }
+
+      final googleAuth = await googleUser.authentication;
+
+      if (googleAuth.idToken == null) {
+        throw PlatformException(
+          code: 'missing-id-token',
+          message:
+              'Google no devolvió idToken. Revisa Play Services / cuenta / red.',
+        );
+      }
+
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final res = await auth.signInWithCredential(credential);
+      final user = res.user;
+
+      if (user == null) {
+        await _showDialogMsg('Error', 'No se pudo iniciar sesión con Google.');
+        return;
+      }
+
+      await _postLogin(user);
+    } on FirebaseAuthException catch (e) {
+      debugPrint(
+          'FirebaseAuthException Google code=${e.code} message=${e.message}');
+      await _showDialogMsg(
+        'Error Google (Firebase)',
+        'code: ${e.code}\nmessage: ${e.message ?? ''}',
+      );
+    } on PlatformException catch (e) {
+      debugPrint(
+          'PlatformException Google code=${e.code} message=${e.message} details=${e.details}');
+      await _showDialogMsg(
+        'Error Google (Platform)',
+        'code: ${e.code}\nmessage: ${e.message ?? ''}\ndetails: ${e.details ?? ''}',
+      );
+    } catch (e) {
+      debugPrint('Google Sign-In error: $e');
+      await _showDialogMsg('Error', 'Ocurrió un error con Google.\n$e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      _loading = true;
+      _passwordError = false;
+      _passwordErrorText = null;
+    });
+
+    final email = _normalizeEmail(_email.text);
     final password = _pass.text.trim();
 
     try {
       final auth = FirebaseAuth.instance;
       final firestore = FirebaseFirestore.instance;
 
+      if (kIsWeb) {
+        try {
+          await auth.setPersistence(Persistence.LOCAL);
+        } catch (_) {}
+      }
+
       try {
         await auth.signInWithEmailAndPassword(email: email, password: password);
       } on FirebaseAuthException catch (e) {
+        if (!mounted) return;
+
+        final colors = context.appColors;
+
         if (e.code == 'user-not-found') {
           await showDialog(
             context: context,
             builder: (_) => AlertDialog(
-              backgroundColor: const Color(0xFFF3E9FF),
+              backgroundColor: colors.elevatedCard,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              title: const Text(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: Text(
                 'Correo no registrado',
                 style: TextStyle(
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18),
+                  color: colors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
                 textAlign: TextAlign.center,
               ),
-              content: const Text(
+              content: Text(
                 'No existe ninguna cuenta asociada a este correo electrónico.\n\n'
                 '¿Deseas registrarte con este correo?',
+                style: TextStyle(color: colors.textPrimary),
                 textAlign: TextAlign.center,
               ),
               actions: [
                 TextButton(
                   style: TextButton.styleFrom(
-                      backgroundColor: const Color(0xFFD6A7F4),
-                      foregroundColor: Colors.black),
+                    backgroundColor: colors.secondaryButton,
+                    foregroundColor: colors.secondaryButtonText,
+                  ),
                   child: const Text('Cancelar'),
                   onPressed: () => Navigator.pop(context),
                 ),
                 TextButton(
                   style: TextButton.styleFrom(
-                      backgroundColor: const Color(0xFF9ED3FF),
-                      foregroundColor: Colors.black),
+                    backgroundColor: colors.primaryButton,
+                    foregroundColor: colors.primaryButtonText,
+                  ),
                   child: const Text('Registrarme'),
                   onPressed: () {
                     Navigator.pop(context);
@@ -366,41 +616,60 @@ class _LoginPageState extends State<LoginPage> {
               ],
             ),
           );
-          setState(() => _loading = false);
           return;
-        } else if (e.code == 'wrong-password' ||
-            e.code == 'invalid-credential') {
+        }
+
+        if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
           setState(() {
             _passwordError = true;
             _passwordErrorText = 'Contraseña incorrecta.';
           });
           _pass.clear();
           _passShakeKey.currentState?.shake();
-          setState(() => _loading = false);
-          return;
-        } else if (e.code == 'user-disabled') {
-          await _showDialogMsg('Cuenta deshabilitada',
-              'Tu cuenta ha sido desactivada. Contacta al administrador.');
-          setState(() => _loading = false);
-          return;
-        } else if (e.code == 'invalid-email') {
-          await _showDialogMsg(
-              'Correo inválido', 'El correo electrónico no es válido.');
-          setState(() => _loading = false);
-          return;
-        } else {
-          await _showDialogMsg(
-              'Error', 'No se pudo iniciar sesión. Código: ${e.code}');
-          setState(() => _loading = false);
           return;
         }
+
+        if (e.code == 'user-disabled') {
+          await _showDialogMsg(
+            'Cuenta deshabilitada',
+            'Tu cuenta ha sido desactivada. Contacta al administrador.',
+          );
+          return;
+        }
+
+        if (e.code == 'invalid-email') {
+          await _showDialogMsg(
+            'Correo inválido',
+            'El correo electrónico no es válido.',
+          );
+          return;
+        }
+
+        await _showDialogMsg(
+          'Error',
+          'No se pudo iniciar sesión. Código: ${e.code}',
+        );
+        return;
       }
 
-      final user = auth.currentUser!;
-      await user.reload();
-      final refreshedUser = auth.currentUser!;
+      final user = auth.currentUser;
+      if (user == null) {
+        await _showDialogMsg('Error', 'No se pudo obtener la sesión del usuario.');
+        return;
+      }
 
-      await FCMTokenService.initAndSaveToken();
+      await user.reload();
+      final refreshedUser = auth.currentUser;
+      if (refreshedUser == null) {
+        await _showDialogMsg('Error', 'La sesión no se pudo refrescar.');
+        return;
+      }
+
+      if (!kIsWeb) {
+        try {
+          await FCMTokenService.initAndSaveToken();
+        } catch (_) {}
+      }
 
       if (!refreshedUser.emailVerified) {
         await _showDialogMsg(
@@ -420,10 +689,12 @@ class _LoginPageState extends State<LoginPage> {
       final data = snap.data() ?? {};
       final role = (data['role'] as String?)?.trim() ?? '';
 
-      final name =
-          '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'.trim().isEmpty
-              ? (refreshedUser.email?.split('@').first ?? 'Usuario')
-              : '${data['firstName']} ${data['lastName']}';
+      final fullName =
+          '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'.trim();
+
+      final name = fullName.isEmpty
+          ? (refreshedUser.email?.split('@').first ?? 'Usuario')
+          : fullName;
 
       if (!mounted) return;
 
@@ -443,20 +714,23 @@ class _LoginPageState extends State<LoginPage> {
         );
       } else {
         await _showDialogMsg(
-            'Cuenta sin rol', 'Tu cuenta no tiene rol asignado.');
+          'Cuenta sin rol',
+          'Tu cuenta no tiene rol asignado.',
+        );
       }
-    } catch (e) {
+    } catch (_) {
       await _showDialogMsg('Error', 'Ocurrió un error al iniciar sesión.');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
-  // ------------------------------------------------------------------
-  // UI COMPLETA (SIN CAMBIOS)
-  // ------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     final resetLabel = _resetSecondsLeft > 0
         ? '¿Olvidaste tu contraseña? (${_resetSecondsLeft}s)'
         : '¿Olvidaste tu contraseña?';
@@ -468,24 +742,27 @@ class _LoginPageState extends State<LoginPage> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: colors.pageBackground,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: kInk),
+          icon: Icon(Icons.arrow_back, color: colors.textPrimary),
           onPressed: () {
             if (Navigator.canPop(context)) {
               Navigator.pop(context);
             } else {
               Navigator.pushNamedAndRemoveUntil(
-                  context, ChoiceStart.route, (_) => false);
+                context,
+                ChoiceStart.route,
+                (_) => false,
+              );
             }
           },
         ),
-        title: const Text(
+        title: Text(
           'Iniciar sesión',
           style: TextStyle(
-            color: kInk,
+            color: colors.textPrimary,
             fontSize: 22,
             fontWeight: FontWeight.w700,
           ),
@@ -522,6 +799,8 @@ class _LoginPageState extends State<LoginPage> {
                       child: TextFormField(
                         controller: _pass,
                         obscureText: _obscurePass,
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _loading ? null : _submit(),
                         validator: (v) =>
                             (v == null || v.isEmpty) ? 'Requerido' : null,
                         onChanged: (_) {
@@ -532,6 +811,7 @@ class _LoginPageState extends State<LoginPage> {
                             });
                           }
                         },
+                        style: TextStyle(color: colors.textPrimary),
                         decoration: InputDecoration(
                           errorText: _passwordError ? _passwordErrorText : null,
                           suffixIcon: IconButton(
@@ -539,7 +819,7 @@ class _LoginPageState extends State<LoginPage> {
                               _obscurePass
                                   ? Icons.visibility_off
                                   : Icons.visibility,
-                              color: Colors.grey[700],
+                              color: colors.textSecondary,
                             ),
                             onPressed: () {
                               setState(() => _obscurePass = !_obscurePass);
@@ -557,7 +837,8 @@ class _LoginPageState extends State<LoginPage> {
                         duration: const Duration(milliseconds: 300),
                         child: TextButton(
                           style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF6A1B9A)),
+                            foregroundColor: colors.secondaryButton,
+                          ),
                           onPressed: _resetSecondsLeft > 0
                               ? null
                               : _sendPasswordResetDialog,
@@ -566,26 +847,78 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                     const SizedBox(height: 24),
+
                     Align(
                       child: SizedBox(
                         width: 296,
                         height: 56,
                         child: FilledButton.icon(
-                          style: pillLav(),
+                          style: pillLav(context),
                           onPressed: _loading ? null : _submit,
-                          icon: const Icon(Icons.login_rounded,
-                              color: Colors.black),
+                          icon: Icon(
+                            Icons.login_rounded,
+                            color: colors.secondaryButtonText,
+                          ),
                           label: _loading
-                              ? const SizedBox(
+                              ? SizedBox(
                                   width: 22,
                                   height: 22,
-                                  child: CircularProgressIndicator(),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: colors.secondaryButtonText,
+                                  ),
                                 )
-                              : const Text('Entrar',
-                                  style: TextStyle(color: Colors.black)),
+                              : Text(
+                                  'Entrar',
+                                  style: TextStyle(
+                                    color: colors.secondaryButtonText,
+                                  ),
+                                ),
                         ),
                       ),
                     ),
+
+                    const SizedBox(height: 18),
+
+                    Row(
+                      children: [
+                        Expanded(child: Divider(color: colors.border)),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Text(
+                            'o continúa con',
+                            style: TextStyle(color: colors.textSecondary),
+                          ),
+                        ),
+                        Expanded(child: Divider(color: colors.border)),
+                      ],
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    Align(
+                      child: SizedBox(
+                        width: 296,
+                        height: 52,
+                        child: OutlinedButton.icon(
+                          onPressed: _loading ? null : _signInWithGoogle,
+                          icon: Icon(
+                            Icons.g_mobiledata,
+                            size: 28,
+                            color: colors.textPrimary,
+                          ),
+                          label: Text(
+                            'Continuar con Google',
+                            style: TextStyle(
+                              color: colors.textPrimary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),
@@ -597,8 +930,6 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-// ---- Componentes auxiliares ----
-
 class _FieldLabel extends StatelessWidget {
   const _FieldLabel(this.text);
   final String text;
@@ -606,10 +937,10 @@ class _FieldLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w600,
-          color: kInk,
+          color: context.appColors.textPrimary,
         ),
       );
 }
@@ -621,6 +952,7 @@ class _FieldBox extends StatelessWidget {
     this.validator,
     this.keyboardType,
   });
+
   final TextEditingController controller;
   final TextInputAction textInputAction;
   final String? Function(String?)? validator;
@@ -628,12 +960,17 @@ class _FieldBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     return TextFormField(
       controller: controller,
       textInputAction: textInputAction,
       keyboardType: keyboardType,
       validator: validator,
-      decoration: const InputDecoration(border: OutlineInputBorder()),
+      style: TextStyle(color: colors.textPrimary),
+      decoration: const InputDecoration(
+        border: OutlineInputBorder(),
+      ),
     );
   }
 }
@@ -645,6 +982,7 @@ class ShakeWidget extends StatefulWidget {
     this.magnitude = 10,
     this.duration = const Duration(milliseconds: 420),
   });
+
   final Widget child;
   final double magnitude;
   final Duration duration;
