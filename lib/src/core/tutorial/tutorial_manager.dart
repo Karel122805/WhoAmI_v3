@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:whoami_app/widgets/mascot_intro.dart';
+import 'package:whoami_app/src/core/widgets/mascot_intro.dart';
 import 'tutorial_keys.dart';
 import 'tutorial_messages.dart';
 
@@ -40,3 +40,9 @@ class TutorialManager {
     );
   }
 }
+
+
+
+
+
+

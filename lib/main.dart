@@ -3,7 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 
 import 'firebase_options.dart';
 import 'src/app.dart';
-import 'services/notifications_service.dart';
+import 'package:whoami_app/src/features/notifications/data/notifications_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,3 +21,9 @@ Future<void> main() async {
 
   runApp(const WhoAmIApp());
 }
+
+
+
+
+
+
