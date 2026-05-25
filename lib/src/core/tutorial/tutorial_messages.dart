@@ -44,9 +44,6 @@ class TutorialMessages {
 
       case TutorialKey.games:
         return "Aquí puedes acceder a los juegos pensados para estimular la memoria y la atención.";
-
-      default:
-        return "Bienvenido a WhoAmI?.";
     }
   }
 }

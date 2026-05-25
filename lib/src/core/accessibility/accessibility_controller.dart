@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../../../services/accessibility_service.dart';
+import 'package:whoami_app/src/core/accessibility/accessibility_service.dart';
 import 'accessibility_settings.dart';
 
 class AccessibilityController extends ChangeNotifier {
@@ -42,3 +42,8 @@ class AccessibilityController extends ChangeNotifier {
     await _service.saveForCurrentUser(_settings); // ✅ guarda por usuario
   }
 }
+
+
+
+
+

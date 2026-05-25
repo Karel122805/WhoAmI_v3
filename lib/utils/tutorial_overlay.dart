@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../widgets/mascot_intro.dart';
+import 'package:whoami_app/src/core/widgets/mascot_intro.dart';
 
 class TutorialOverlay {
   static OverlayEntry? _entry;
@@ -25,3 +25,9 @@ class TutorialOverlay {
     _entry = null;
   }
 }
+
+
+
+
+
+
