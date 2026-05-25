@@ -12,7 +12,7 @@ class MotivationalPhrasesPage extends StatefulWidget {
 }
 
 class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
-  // PALETA EXACTA PASTEL
+  // Paleta de colores pastel utilizada en las categorías.
   static const Color yellow = Color(0xFFFFF49F);
   static const Color pink = Color(0xFFFF9FA1);
   static const Color blue = Color(0xFF9ED3FF);
@@ -26,81 +26,81 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
 
   bool _showMenu = true;
 
-  // FRASES POR CATEGORÍA (5 x 8)
+  // Frases agrupadas por categoría.
   final Map<String, List<String>> _phrasesByCategory = {
-    "Ánimo": [
-      "Hoy es un buen día para intentarlo con calma.",
-      "Paso a pasito, lo estoy haciendo bien.",
-      "Puedo aprender algo pequeño hoy.",
-      "Mi esfuerzo de hoy cuenta y vale.",
-      "Respiro hondo y sigo adelante.",
-      "Soy más fuerte de lo que pienso.",
-      "Cada momento es una nueva oportunidad.",
-      "Hago lo mejor que puedo y eso está bien.",
+    'Ánimo': [
+      'Hoy es un buen día para intentarlo con calma.',
+      'Paso a pasito, lo estoy haciendo bien.',
+      'Puedo aprender algo pequeño hoy.',
+      'Mi esfuerzo de hoy cuenta y vale.',
+      'Respiro hondo y sigo adelante.',
+      'Soy más fuerte de lo que pienso.',
+      'Cada momento es una nueva oportunidad.',
+      'Hago lo mejor que puedo y eso está bien.',
     ],
-    "Calma": [
-      "Respiro lento tres veces y siento paz.",
-      "Puedo pausar un momento y descansar.",
-      "Mi cuerpo se relaja cuando respiro suave.",
-      "Puedo tomarme mi tiempo, no hay prisa.",
-      "Si me confundo, respiro y vuelvo a empezar.",
-      "La calma llega cuando escucho mi respiración.",
-      "Estoy a salvo aquí y ahora.",
-      "Puedo soltar la tensión de mis hombros y seguir.",
+    'Calma': [
+      'Respiro lento tres veces y siento paz.',
+      'Puedo pausar un momento y descansar.',
+      'Mi cuerpo se relaja cuando respiro suave.',
+      'Puedo tomarme mi tiempo, no hay prisa.',
+      'Si me confundo, respiro y vuelvo a empezar.',
+      'La calma llega cuando escucho mi respiración.',
+      'Estoy a salvo aquí y ahora.',
+      'Puedo soltar la tensión de mis hombros y seguir.',
     ],
-    "Memoria": [
-      "Mi nombre es importante y vale mucho.",
-      "Hay recuerdos bonitos guardados en mi corazón.",
-      "Puedo pedir ayuda cuando la necesito.",
-      "Lo que soy no se pierde: sigo siendo yo.",
-      "Cada día puedo recordar algo sencillo.",
-      "Soy valioso para mi familia y para mí.",
-      "Puedo mirar una foto y sonreír.",
-      "Mi historia sigue, paso a paso.",
+    'Memoria': [
+      'Mi nombre es importante y vale mucho.',
+      'Hay recuerdos bonitos guardados en mi corazón.',
+      'Puedo pedir ayuda cuando la necesito.',
+      'Lo que soy no se pierde: sigo siendo yo.',
+      'Cada día puedo recordar algo sencillo.',
+      'Soy valioso para mi familia y para mí.',
+      'Puedo mirar una foto y sonreír.',
+      'Mi historia sigue, paso a paso.',
     ],
-    "Autonomía": [
-      "Hoy puedo lograr una tarea sencilla.",
-      "Si no sale a la primera, lo intento de nuevo.",
-      "Puedo seguir instrucciones cortas y claras.",
-      "Un pequeño logro es un gran avance.",
-      "Puedo organizar mis cosas con ayuda.",
-      "Mi ritmo es perfecto para mí.",
-      "Celebro lo que sí pude hacer hoy.",
-      "Puedo pedir indicaciones y seguirlas.",
+    'Autonomía': [
+      'Hoy puedo lograr una tarea sencilla.',
+      'Si no sale a la primera, lo intento de nuevo.',
+      'Puedo seguir instrucciones cortas y claras.',
+      'Un pequeño logro es un gran avance.',
+      'Puedo organizar mis cosas con ayuda.',
+      'Mi ritmo es perfecto para mí.',
+      'Celebro lo que sí pude hacer hoy.',
+      'Puedo pedir indicaciones y seguirlas.',
     ],
-    "Afecto": [
-      "No estoy solo: hay gente que me quiere.",
-      "Puedo pedir un abrazo cuando lo necesite.",
-      "Mi voz es escuchada con cariño.",
-      "Caminar acompañado me hace bien.",
-      "Gracias por cuidar de mí; yo también cuido de mí.",
-      "Puedo sonreír y agradecer las cosas simples.",
-      "Juntos es más fácil y más bonito.",
-      "La ternura también es una fuerza.",
+    'Afecto': [
+      'No estoy solo: hay gente que me quiere.',
+      'Puedo pedir un abrazo cuando lo necesite.',
+      'Mi voz es escuchada con cariño.',
+      'Caminar acompañado me hace bien.',
+      'Gracias por cuidar de mí; yo también cuido de mí.',
+      'Puedo sonreír y agradecer las cosas simples.',
+      'Juntos es más fácil y más bonito.',
+      'La ternura también es una fuerza.',
     ],
   };
 
-  // COLORES POR CATEGORÍA
+  // Color asociado a cada categoría.
   late final Map<String, Color> _catColor = {
-    "Ánimo": yellow,
-    "Calma": pink,
-    "Memoria": blue,
-    "Autonomía": green,
-    "Afecto": purple,
+    'Ánimo': yellow,
+    'Calma': pink,
+    'Memoria': blue,
+    'Autonomía': green,
+    'Afecto': purple,
   };
 
-  // ICONOS POR CATEGORÍA
+  // Icono asociado a cada categoría.
   late final Map<String, IconData> _catIcon = {
-    "Ánimo": Icons.wb_sunny_rounded,
-    "Calma": Icons.self_improvement_rounded,
-    "Memoria": Icons.memory_rounded,
-    "Autonomía": Icons.track_changes_rounded,
-    "Afecto": Icons.favorite_rounded,
+    'Ánimo': Icons.wb_sunny_rounded,
+    'Calma': Icons.self_improvement_rounded,
+    'Memoria': Icons.memory_rounded,
+    'Autonomía': Icons.track_changes_rounded,
+    'Afecto': Icons.favorite_rounded,
   };
 
   late final List<String> _categories;
 
-  String _selected = "Ánimo";
+  String _selected = 'Ánimo';
   List<String> _visible = [];
 
   @override
@@ -111,17 +111,17 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
   }
 
   Future<void> _configureTts() async {
-    await _tts.setLanguage("es-MX");
+    await _tts.setLanguage('es-MX');
     await _tts.setPitch(1.0);
     await _tts.setSpeechRate(0.5);
   }
 
-  // ✅ STOP centralizado (volver al menú / back del sistema / dispose)
+  // Detiene la reproducción de voz antes de cambiar de pantalla o categoría.
   Future<void> _stopTts() async {
     try {
       await _tts.stop();
     } catch (_) {
-      // ignorar errores del motor TTS
+      // Se ignoran errores del motor de voz para evitar interrupciones visuales.
     }
   }
 
@@ -132,15 +132,16 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
     final list = List<String>.from(_phrasesByCategory[cat]!)..shuffle(_rnd);
 
     if (!mounted) return;
+
     setState(() {
       _visible = list;
       _showMenu = false;
     });
   }
 
-  Future<void> _speak(String t) async {
+  Future<void> _speak(String text) async {
     await _stopTts();
-    await _tts.speak(t);
+    await _tts.speak(text);
   }
 
   @override
@@ -153,13 +154,13 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: true,
-      onPopInvoked: (didPop) async {
-        // ✅ si se sale con botón atrás/gesto, detener audio
+      onPopInvokedWithResult: (didPop, result) async {
+        // Detiene el audio cuando el usuario sale con el botón atrás o gesto del sistema.
         await _stopTts();
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text("Frases"),
+          title: const Text('Frases'),
           centerTitle: true,
           elevation: 0,
         ),
@@ -168,7 +169,7 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
     );
   }
 
-  // ⭐ MENÚ DE CATEGORÍAS
+  // Construye el menú principal de categorías.
   Widget _buildMenu() {
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -188,7 +189,7 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
                     blurRadius: 6,
                     offset: Offset(0, 4),
                     color: Colors.black26,
-                  )
+                  ),
                 ],
               ),
               child: Center(
@@ -216,7 +217,7 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
     );
   }
 
-  // ⭐ LISTA DE FRASES
+  // Construye la lista de frases de la categoría seleccionada.
   Widget _buildPhrases() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 70),
@@ -235,14 +236,14 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
               },
             ),
           ),
-
-          // BOTÓN VOLVER AL MENÚ
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () async {
-                await _stopTts(); // ✅ detener audio al volver al menú
+                await _stopTts();
+
                 if (!mounted) return;
+
                 setState(() => _showMenu = true);
               },
               style: ElevatedButton.styleFrom(
@@ -255,7 +256,7 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
                 elevation: 4,
               ),
               child: const Text(
-                "Volver al menú",
+                'Volver al menú',
                 style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
               ),
             ),
@@ -266,7 +267,7 @@ class _MotivationalPhrasesPageState extends State<MotivationalPhrasesPage> {
   }
 }
 
-// ⭐ CARD INDIVIDUAL
+// Tarjeta individual para mostrar y reproducir una frase.
 class _PhraseCard extends StatelessWidget {
   final String text;
   final VoidCallback onTap;
@@ -320,9 +321,3 @@ class _PhraseCard extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
-

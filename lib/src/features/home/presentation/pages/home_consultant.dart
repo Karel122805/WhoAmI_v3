@@ -60,6 +60,7 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
       final doc =
           await FirebaseFirestore.instance.collection('users').doc(uid).get();
       final data = doc.data();
+
       if (data != null &&
           data['caregiverId'] != null &&
           data['caregiverId'] != '') {
@@ -105,6 +106,7 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
           .collection('users')
           .doc(user.uid)
           .get();
+
       final data = userDoc.data() ?? {};
       final caregiverId = data['caregiverId'];
 
@@ -115,9 +117,11 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
+
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
         permission = await Geolocator.requestPermission();
+
         if (permission == LocationPermission.denied ||
             permission == LocationPermission.deniedForever) {
           throw Exception('Permiso de ubicación denegado.');
@@ -125,7 +129,9 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
       }
 
       final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       );
 
       final name =
@@ -148,7 +154,9 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
         'active': true,
       });
 
-      await emergencyRef.update({'triggeredAt': FieldValue.serverTimestamp()});
+      await emergencyRef.update({
+        'triggeredAt': FieldValue.serverTimestamp(),
+      });
 
       await FirebaseFirestore.instance
           .collection('users')
@@ -202,7 +210,7 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                         : Colors.black.withValues(alpha: 0.08),
                     blurRadius: 12,
                     offset: const Offset(0, 6),
-                  )
+                  ),
                 ],
               ),
               child: Column(
@@ -222,7 +230,7 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    "Alerta enviada",
+                    'Alerta enviada',
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
@@ -231,8 +239,8 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    "Tu cuidador ha sido notificado con tu ubicación en tiempo real.\n"
-                    "Mantén la calma, la ayuda está en camino.",
+                    'Tu cuidador ha sido notificado con tu ubicación en tiempo real.\n'
+                    'Mantén la calma, la ayuda está en camino.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 15,
@@ -259,7 +267,7 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                       ),
                       onPressed: () => Navigator.pop(context),
                       child: const Text(
-                        "Entendido",
+                        'Entendido',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                         ),
@@ -342,16 +350,16 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                         ],
                       ),
                     ),
-
                     const UserAvatar(radius: 60),
                     const SizedBox(height: 12),
-
                     StreamBuilder<User?>(
                       stream: FirebaseAuth.instance.userChanges(),
                       builder: (context, authSnap) {
                         final user =
                             authSnap.data ?? FirebaseAuth.instance.currentUser;
+
                         if (user == null) return const SizedBox();
+
                         final uid = user.uid;
 
                         return StreamBuilder<
@@ -362,6 +370,7 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                               .snapshots(),
                           builder: (context, docSnap) {
                             String name = 'Usuario';
+
                             if (docSnap.hasData &&
                                 docSnap.data!.data() != null) {
                               final data = docSnap.data!.data()!;
@@ -372,6 +381,7 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                               final fsName = [first, last]
                                   .where((e) => e.isNotEmpty)
                                   .join(' ');
+
                               if (fsName.isNotEmpty) name = fsName;
                             }
 
@@ -388,14 +398,12 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                         );
                       },
                     ),
-
                     const SizedBox(height: 8),
                     Text(
                       'Selecciona una opción',
                       style: TextStyle(color: colors.textSecondary),
                     ),
                     const SizedBox(height: 20),
-
                     _PillButton(
                       color: context.isDark ? colors.primaryButton : kBlue,
                       icon: Icons.menu_book_outlined,
@@ -449,9 +457,7 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
                     Opacity(
                       opacity: _hasCaregiver ? 1 : 0.5,
                       child: AbsorbPointer(
@@ -468,7 +474,6 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 24),
                   ],
                 ),

@@ -379,6 +379,16 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
     return showingPattern ? colors.primaryButton : colors.secondaryButton;
   }
 
+  Future<void> _handleExit() async {
+    final confirm = await _onWillPop();
+
+    if (!mounted) return;
+
+    if (confirm) {
+      Navigator.pop(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -386,12 +396,11 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
     final size = MediaQuery.of(context).size;
     final gridSide = sqrt(tileCount).ceil();
 
-    return WillPopScope(
-      onWillPop: () async {
-        if (await _onWillPop()) {
-          Navigator.pop(context);
-        }
-        return false;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await _handleExit();
       },
       child: Scaffold(
         backgroundColor: colors.pageBackground,
@@ -409,11 +418,7 @@ class _BrainSaysPageState extends State<BrainSaysPage> {
           elevation: 0,
           leading: IconButton(
             icon: Icon(Icons.arrow_back, color: colors.textPrimary),
-            onPressed: () async {
-              if (await _onWillPop()) {
-                Navigator.pop(context);
-              }
-            },
+            onPressed: _handleExit,
           ),
         ),
         body: Center(
@@ -734,8 +739,3 @@ class GameEndModal extends StatelessWidget {
     );
   }
 }
-
-
-
-
-

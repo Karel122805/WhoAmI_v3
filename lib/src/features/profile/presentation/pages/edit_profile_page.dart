@@ -48,6 +48,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     bool success = true,
   }) async {
     if (!mounted) return;
+
     final colors = context.appColors;
 
     await showDialog(
@@ -142,40 +143,63 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return result ?? false;
   }
 
-  String _fmt(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  Future<void> _handleBackNavigation() async {
+    final canLeave = await _confirmBeforeLeave();
+
+    if (!mounted) return;
+
+    if (canLeave) {
+      Navigator.maybePop(context);
+    }
+  }
+
+  String _fmt(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
+  }
 
   DateTime? _parseBirthDate(dynamic raw) {
     if (raw == null) return null;
 
     try {
       if (raw is Timestamp) return raw.toDate();
-    } catch (_) {}
+    } catch (_) {
+      // Se ignora para continuar intentando otros formatos válidos.
+    }
 
     if (raw is int) {
       try {
         return DateTime.fromMillisecondsSinceEpoch(raw);
-      } catch (_) {}
+      } catch (_) {
+        // Se ignora para continuar intentando otros formatos válidos.
+      }
     }
 
     if (raw is String) {
       try {
         return DateTime.parse(raw);
       } catch (_) {
-        final p = raw.split('/');
-        if (p.length == 3) {
-          final d = int.tryParse(p[0]);
-          final m = int.tryParse(p[1]);
-          final y = int.tryParse(p[2]);
-          if (d != null && m != null && y != null) {
-            final parsed = DateTime(y, m, d);
-            if (parsed.year == y && parsed.month == m && parsed.day == d) {
+        final parts = raw.split('/');
+
+        if (parts.length == 3) {
+          final day = int.tryParse(parts[0]);
+          final month = int.tryParse(parts[1]);
+          final year = int.tryParse(parts[2]);
+
+          if (day != null && month != null && year != null) {
+            final parsed = DateTime(year, month, day);
+
+            if (parsed.year == year &&
+                parsed.month == month &&
+                parsed.day == day) {
               return parsed;
             }
           }
         }
       }
     }
+
     return null;
   }
 
@@ -185,8 +209,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final now = DateTime.now();
     int age = now.year - birthDate.year;
 
-    final hasHadBirthdayThisYear =
-        (now.month > birthDate.month) ||
+    final hasHadBirthdayThisYear = now.month > birthDate.month ||
         (now.month == birthDate.month && now.day >= birthDate.day);
 
     if (!hasHadBirthdayThisYear) {
@@ -228,10 +251,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         : user.photoURL;
 
     final rawDob =
-        data['birthDate'] ??
-        data['birthday'] ??
-        data['dob'] ??
-        data['dateOfBirth'];
+        data['birthDate'] ?? data['birthday'] ?? data['dob'] ?? data['dateOfBirth'];
 
     _birthDate = _parseBirthDate(rawDob);
     _dobCtrl.text = _birthDate == null ? '' : _fmt(_birthDate!);
@@ -260,15 +280,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
     final textChanged =
         _firstName.text.trim() != (_original['firstName'] ?? '') ||
-        _lastName.text.trim() != (_original['lastName'] ?? '') ||
-        _email.text.trim() != (_original['email'] ?? '') ||
-        birthIso != (_original['birthDate']) ||
-        _phoneCtrl.text.trim() != (_original['phone'] ?? '') ||
-        _addressCtrl.text.trim() != (_original['address'] ?? '');
+            _lastName.text.trim() != (_original['lastName'] ?? '') ||
+            _email.text.trim() != (_original['email'] ?? '') ||
+            birthIso != _original['birthDate'] ||
+            _phoneCtrl.text.trim() != (_original['phone'] ?? '') ||
+            _addressCtrl.text.trim() != (_original['address'] ?? '');
 
     final photoChanged = _localPhoto != null;
-
     final newDirty = textChanged || photoChanged;
+
     if (newDirty != _dirty && mounted) {
       setState(() => _dirty = newDirty);
     }
@@ -283,7 +303,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _addressCtrl.text = _original['address'] ?? '';
 
     final origDob = _original['birthDate'];
-    _birthDate = (origDob == null) ? null : DateTime.tryParse(origDob);
+    _birthDate = origDob == null ? null : DateTime.tryParse(origDob);
     _dobCtrl.text = _birthDate == null ? '' : _fmt(_birthDate!);
     _updateAgeController();
 
@@ -314,6 +334,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         _dobCtrl.text = _fmt(_birthDate!);
         _updateAgeController();
       });
+
       _recomputeDirty();
     }
   }
@@ -450,10 +471,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 ),
                 onTap: () async {
                   Navigator.pop(context);
+
                   final img = await ImagePicker().pickImage(
                     source: ImageSource.camera,
                     imageQuality: 85,
                   );
+
                   if (img != null) {
                     setState(() => _localPhoto = File(img.path));
                     _recomputeDirty();
@@ -471,10 +494,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 ),
                 onTap: () async {
                   Navigator.pop(context);
+
                   final img = await ImagePicker().pickImage(
                     source: ImageSource.gallery,
                     imageQuality: 85,
                   );
+
                   if (img != null) {
                     setState(() => _localPhoto = File(img.path));
                     _recomputeDirty();
@@ -525,6 +550,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+
       await _showDialogOk(
         title: 'Revisa tu correo',
         message:
@@ -555,8 +581,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           backgroundColor: colors.elevatedCard,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           title: Text(
             'Cambiar correo',
             style: TextStyle(
@@ -569,7 +596,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Para cambiar tu correo, confirma tu contraseña actual.',
+                  'Para cambiar tu correo, confirma tu contraseña actual. Después recibirás un enlace de verificación en el nuevo correo.',
                   style: TextStyle(color: colors.textPrimary),
                 ),
                 const SizedBox(height: 14),
@@ -621,7 +648,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ),
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text(
-                'Guardar',
+                'Enviar verificación',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
@@ -630,10 +657,17 @@ class _EditProfilePageState extends State<EditProfilePage> {
       ),
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true) {
+      newEmailCtrl.dispose();
+      passCtrl.dispose();
+      return;
+    }
 
     final newEmail = newEmailCtrl.text.trim().toLowerCase();
     final currentPass = passCtrl.text.trim();
+
+    newEmailCtrl.dispose();
+    passCtrl.dispose();
 
     if (newEmail.isEmpty || !newEmail.contains('@')) {
       await _showDialogOk(
@@ -650,6 +684,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
         title: 'No disponible',
         message: 'Esta cuenta no tiene correo principal disponible para cambiar.',
         icon: Icons.error_outline,
+        success: false,
+      );
+      return;
+    }
+
+    if (newEmail == user.email!.trim().toLowerCase()) {
+      await _showDialogOk(
+        title: 'Sin cambios',
+        message: 'El nuevo correo es igual al correo actual.',
+        icon: Icons.info_outline,
         success: false,
       );
       return;
@@ -672,25 +716,25 @@ class _EditProfilePageState extends State<EditProfilePage> {
       );
 
       await user.reauthenticateWithCredential(credential);
-      await user.updateEmail(newEmail);
+
+      // Firebase recomienda verificar el nuevo correo antes de actualizarlo.
+      await user.verifyBeforeUpdateEmail(newEmail);
 
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'email': newEmail,
+        'pendingEmail': newEmail,
         'updatedAt': Timestamp.now(),
       }, SetOptions(merge: true));
 
-      _email.text = newEmail;
-      _original['email'] = newEmail;
-      _recomputeDirty();
-
       await _showDialogOk(
-        title: 'Correo actualizado',
-        message: 'Tu correo se cambió correctamente.',
-        icon: Icons.check_circle_outline,
+        title: 'Verifica tu nuevo correo',
+        message:
+            'Te enviamos un enlace de verificación a:\n\n$newEmail\n\nEl cambio se aplicará cuando confirmes ese correo.',
+        icon: Icons.mark_email_read_outlined,
       );
     } on FirebaseAuthException catch (e) {
-      String message = 'No se pudo cambiar el correo.';
-      if (e.code == 'wrong-password') {
+      String message = 'No se pudo solicitar el cambio de correo.';
+
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
         message = 'La contraseña actual es incorrecta.';
       } else if (e.code == 'email-already-in-use') {
         message = 'Ese correo ya está en uso.';
@@ -698,6 +742,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
         message = 'El correo nuevo no es válido.';
       } else if (e.code == 'requires-recent-login') {
         message = 'Debes volver a iniciar sesión antes de cambiar tu correo.';
+      } else if (e.code == 'operation-not-allowed') {
+        message = 'El cambio de correo no está habilitado para este método de inicio de sesión.';
       }
 
       await _showDialogOk(
@@ -709,7 +755,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     } catch (_) {
       await _showDialogOk(
         title: 'Error',
-        message: 'Ocurrió un problema inesperado al cambiar el correo.',
+        message: 'Ocurrió un problema inesperado al solicitar el cambio de correo.',
         icon: Icons.error_outline,
         success: false,
       );
@@ -745,6 +791,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     try {
       if (_localPhoto != null) {
         final url = await _uploadPhoto(user);
+
         if (url != null) {
           _photoUrl = url;
           await user.updatePhotoURL(url);
@@ -798,7 +845,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       }
 
       await _showDialogOk(
-        title: '¡Listo!',
+        title: 'Listo',
         message: 'Cambios guardados exitosamente.',
         icon: Icons.check_circle_outline,
       );
@@ -893,8 +940,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final colors = context.appColors;
     final hasPhoto = _localPhoto != null || (_photoUrl?.isNotEmpty ?? false);
 
-    return WillPopScope(
-      onWillPop: _confirmBeforeLeave,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await _handleBackNavigation();
+      },
       child: Scaffold(
         appBar: AppBar(
           backgroundColor: colors.pageBackground,
@@ -913,12 +964,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           ),
           leading: IconButton(
             icon: Icon(Icons.arrow_back, color: colors.textPrimary),
-            onPressed: () async {
-              final canLeave = await _confirmBeforeLeave();
-              if (canLeave && mounted) {
-                Navigator.maybePop(context);
-              }
-            },
+            onPressed: _handleBackNavigation,
           ),
         ),
         body: SafeArea(
@@ -972,8 +1018,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                   child: InkWell(
                                     customBorder: const CircleBorder(),
                                     onTap: _pickPhoto,
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(10),
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(10),
                                       child: Icon(
                                         Icons.photo_camera_outlined,
                                         color: Colors.black,
@@ -1073,7 +1119,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                 shape: const StadiumBorder(),
                               ),
                               onPressed: _requestPasswordReset,
-                              icon: const Icon(Icons.lock_reset, color: Colors.black),
+                              icon: const Icon(
+                                Icons.lock_reset,
+                                color: Colors.black,
+                              ),
                               label: const Text(
                                 'Solicitar cambio de contraseña',
                                 style: TextStyle(
@@ -1104,8 +1153,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                     backgroundColor: colors.emergency,
                                     disabledBackgroundColor:
                                         colors.emergency.withValues(alpha: 0.45),
-                                    disabledForegroundColor:
-                                        colors.emergencyText.withValues(alpha: 0.7),
+                                    disabledForegroundColor: colors.emergencyText
+                                        .withValues(alpha: 0.7),
                                     shape: const StadiumBorder(),
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 16,
@@ -1116,9 +1165,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: FilledButton.icon(
-                                  onPressed: (_saving || !_dirty)
-                                      ? null
-                                      : () => _save(),
+                                  onPressed:
+                                      (_saving || !_dirty) ? null : () => _save(),
                                   icon: _saving
                                       ? SizedBox(
                                           width: 18,
@@ -1141,12 +1189,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                   ),
                                   style: FilledButton.styleFrom(
                                     backgroundColor: colors.primaryButton,
-                                    disabledBackgroundColor:
-                                        colors.primaryButton.withValues(alpha: 0.45),
-                                    disabledForegroundColor:
-                                        colors.primaryButtonText.withValues(alpha: 
-                                          0.7,
-                                        ),
+                                    disabledBackgroundColor: colors.primaryButton
+                                        .withValues(alpha: 0.45),
+                                    disabledForegroundColor: colors
+                                        .primaryButtonText
+                                        .withValues(alpha: 0.7),
                                     shape: const StadiumBorder(),
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 16,
@@ -1189,8 +1236,3 @@ class _EditProfilePageState extends State<EditProfilePage> {
     super.dispose();
   }
 }
-
-
-
-
-

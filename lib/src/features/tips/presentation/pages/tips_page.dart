@@ -11,7 +11,7 @@ class TipsPage extends StatefulWidget {
 }
 
 class _TipsPageState extends State<TipsPage> {
-  // COLORES PASTEL EXACTOS
+  // Definición de colores utilizados para las categorías.
   static const Color yellow = Color(0xFFFFF49F);
   static const Color pink = Color(0xFFFF9FA1);
   static const Color blue = Color(0xFF9ED3FF);
@@ -23,93 +23,94 @@ class _TipsPageState extends State<TipsPage> {
   final FlutterTts _tts = FlutterTts();
   final Random _rnd = Random();
 
+  // Controla si se muestra el menú principal o la lista de consejos.
   bool _showCategoryMenu = true;
 
-  // ⭐ SOLO 5 CATEGORÍAS CON 10 TIPS
+  // Consejos agrupados por categoría.
   final Map<String, List<String>> _tipsByCategory = {
-    "Salud física": [
-      "Haz estiramientos suaves al despertar.",
-      "Toma agua cada 60 minutos.",
-      "Camina 10 minutos en un lugar seguro.",
-      "Evita levantar objetos pesados.",
-      "Detente si sientes mareo y respira profundo.",
-      "Mueve tobillos y hombros antes de levantarte.",
-      "Descansa cinco minutos si te sientes cansado.",
-      "Carga solo cosas ligeras.",
-      "Haz respiraciones profundas 3 veces.",
-      "Cuéntale a un familiar si sientes dolor.",
+    'Salud física': [
+      'Haz estiramientos suaves al despertar.',
+      'Toma agua cada 60 minutos.',
+      'Camina 10 minutos en un lugar seguro.',
+      'Evita levantar objetos pesados.',
+      'Detente si sientes mareo y respira profundo.',
+      'Mueve tobillos y hombros antes de levantarte.',
+      'Descansa cinco minutos si te sientes cansado.',
+      'Carga solo cosas ligeras.',
+      'Haz respiraciones profundas 3 veces.',
+      'Cuéntale a un familiar si sientes dolor.',
     ],
-    "Salud mental": [
-      "Cuenta del 1 al 10 lentamente si te sientes nervioso.",
-      "Escucha una canción relajante.",
-      "Piensa en un recuerdo bonito.",
-      "Mira por la ventana y describe lo que ves.",
-      "Respira hondo tres veces si te enojas.",
-      "Dite: “Hoy haré lo mejor que pueda”.",
-      "Busca un espacio silencioso si hay ruido.",
-      "Pide compañía si te sientes solo.",
-      "Tómate un minuto para cerrar los ojos y respirar.",
-      "Apaga sonidos fuertes si te molestan.",
+    'Salud mental': [
+      'Cuenta del 1 al 10 lentamente si te sientes nervioso.',
+      'Escucha una canción relajante.',
+      'Piensa en un recuerdo bonito.',
+      'Mira por la ventana y describe lo que ves.',
+      'Respira hondo tres veces si te enojas.',
+      'Dite: “Hoy haré lo mejor que pueda”.',
+      'Busca un espacio silencioso si hay ruido.',
+      'Pide compañía si te sientes solo.',
+      'Tómate un minuto para cerrar los ojos y respirar.',
+      'Apaga sonidos fuertes si te molestan.',
     ],
-    "Memoria": [
-      "Di en voz alta tu nombre y dónde estás.",
-      "Mira el calendario y señala la fecha.",
-      "Coloca tus llaves siempre en el mismo lugar.",
-      "Lee tu lista de actividades del día.",
-      "Toma una foto del lugar donde dejas tus cosas.",
-      "Repite nombres de familiares en fotos.",
-      "Pregunta sin pena si no recuerdas algo.",
-      "Usa un reloj visible por la mañana.",
-      "Revisa tu agenda antes de salir.",
-      "Mantén una tarjeta con tu número de contacto.",
+    'Memoria': [
+      'Di en voz alta tu nombre y dónde estás.',
+      'Mira el calendario y señala la fecha.',
+      'Coloca tus llaves siempre en el mismo lugar.',
+      'Lee tu lista de actividades del día.',
+      'Toma una foto del lugar donde dejas tus cosas.',
+      'Repite nombres de familiares en fotos.',
+      'Pregunta sin pena si no recuerdas algo.',
+      'Usa un reloj visible por la mañana.',
+      'Revisa tu agenda antes de salir.',
+      'Mantén una tarjeta con tu número de contacto.',
     ],
-    "Rutina y sueño": [
-      "Duerme y despierta a la misma hora.",
-      "Prepara la ropa antes de acostarte.",
-      "Evita pantallas una hora antes de dormir.",
-      "Toma poca cafeína en la tarde.",
-      "Mantén el cuarto con poca luz al dormir.",
-      "Haz una lista corta para el día siguiente.",
-      "Apaga luces intensas antes de dormir.",
-      "Evita comer muy tarde.",
-      "Haz una actividad tranquila antes de acostarte.",
-      "Respira profundo si despiertas en la noche.",
+    'Rutina y sueño': [
+      'Duerme y despierta a la misma hora.',
+      'Prepara la ropa antes de acostarte.',
+      'Evita pantallas una hora antes de dormir.',
+      'Toma poca cafeína en la tarde.',
+      'Mantén el cuarto con poca luz al dormir.',
+      'Haz una lista corta para el día siguiente.',
+      'Apaga luces intensas antes de dormir.',
+      'Evita comer muy tarde.',
+      'Haz una actividad tranquila antes de acostarte.',
+      'Respira profundo si despiertas en la noche.',
     ],
-    "Seguridad": [
-      "Mantén pasillos libres de objetos.",
-      "Enciende una luz pequeña por la noche.",
-      "Usa zapatos cerrados y seguros.",
-      "Guarda objetos peligrosos en alto.",
-      "No subas a sillas ni bancos.",
-      "Revisa que la estufa esté apagada.",
-      "Coloca etiquetas en puertas: Baño, Cocina, Recámara.",
-      "Evita pisos mojados.",
-      "Mantén cables lejos del paso.",
-      "Lleva un teléfono con emergencias guardadas.",
+    'Seguridad': [
+      'Mantén pasillos libres de objetos.',
+      'Enciende una luz pequeña por la noche.',
+      'Usa zapatos cerrados y seguros.',
+      'Guarda objetos peligrosos en alto.',
+      'No subas a sillas ni bancos.',
+      'Revisa que la estufa esté apagada.',
+      'Coloca etiquetas en puertas: Baño, Cocina, Recámara.',
+      'Evita pisos mojados.',
+      'Mantén cables lejos del paso.',
+      'Lleva un teléfono con emergencias guardadas.',
     ],
   };
 
-  // COLORES POR CATEGORÍA
+  // Color asociado a cada categoría.
   late final Map<String, Color> _catColor = {
-    "Salud física": yellow,
-    "Salud mental": pink,
-    "Memoria": blue,
-    "Rutina y sueño": green,
-    "Seguridad": purple,
+    'Salud física': yellow,
+    'Salud mental': pink,
+    'Memoria': blue,
+    'Rutina y sueño': green,
+    'Seguridad': purple,
   };
 
-  // ÍCONOS POR CATEGORÍA
+  // Icono asociado a cada categoría.
   late final Map<String, IconData> _catIcon = {
-    "Salud física": Icons.fitness_center_rounded,
-    "Salud mental": Icons.self_improvement_rounded,
-    "Memoria": Icons.memory_rounded,
-    "Rutina y sueño": Icons.nightlight_round,
-    "Seguridad": Icons.shield_rounded,
+    'Salud física': Icons.fitness_center_rounded,
+    'Salud mental': Icons.self_improvement_rounded,
+    'Memoria': Icons.memory_rounded,
+    'Rutina y sueño': Icons.nightlight_round,
+    'Seguridad': Icons.shield_rounded,
   };
 
   late final List<String> _categories;
 
-  String _selected = "Salud física";
+  String _selected = 'Salud física';
   List<String> _visible = [];
 
   @override
@@ -119,35 +120,39 @@ class _TipsPageState extends State<TipsPage> {
     _configureTts();
   }
 
+  // Configura el motor de texto a voz en español de México.
   Future<void> _configureTts() async {
-    await _tts.setLanguage("es-MX");
+    await _tts.setLanguage('es-MX');
     await _tts.setPitch(1.0);
     await _tts.setSpeechRate(0.5);
   }
 
-  // ✅ STOP centralizado (para volver al menú / back del sistema / dispose)
+  // Detiene cualquier reproducción de audio activa.
   Future<void> _stopTts() async {
     try {
       await _tts.stop();
     } catch (_) {
-      // ignorar errores del motor TTS para no romper UI
+      // Se ignoran errores internos del motor de voz para no afectar la interfaz.
     }
   }
 
-  // Cargar categoría
-  Future<void> _loadCategory(String cat) async {
+  // Carga una categoría y mezcla sus consejos de forma aleatoria.
+  Future<void> _loadCategory(String category) async {
     await _stopTts();
-    _selected = cat;
 
-    final tips = List<String>.from(_tipsByCategory[cat]!)..shuffle(_rnd);
+    _selected = category;
+
+    final tips = List<String>.from(_tipsByCategory[category]!)..shuffle(_rnd);
 
     if (!mounted) return;
+
     setState(() {
       _visible = tips;
       _showCategoryMenu = false;
     });
   }
 
+  // Reproduce el consejo seleccionado mediante texto a voz.
   Future<void> _speak(String text) async {
     await _stopTts();
     await _tts.speak(text);
@@ -163,13 +168,12 @@ class _TipsPageState extends State<TipsPage> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: true,
-      onPopInvoked: (didPop) async {
-        // ✅ Si se sale con botón atrás/gesto, detiene audio
+      onPopInvokedWithResult: (didPop, result) async {
         await _stopTts();
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text("Consejos"),
+          title: const Text('Consejos'),
           centerTitle: true,
           elevation: 0,
         ),
@@ -178,7 +182,7 @@ class _TipsPageState extends State<TipsPage> {
     );
   }
 
-  // ⭐ 1) MENÚ DE CATEGORÍAS
+  // Construye el menú principal de categorías.
   Widget _buildCategoryMenu() {
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -186,29 +190,33 @@ class _TipsPageState extends State<TipsPage> {
         crossAxisCount: 2,
         crossAxisSpacing: 14,
         mainAxisSpacing: 14,
-        children: _categories.map((cat) {
+        children: _categories.map((category) {
           return GestureDetector(
-            onTap: () => _loadCategory(cat),
+            onTap: () => _loadCategory(category),
             child: Container(
               decoration: BoxDecoration(
-                color: _catColor[cat],
+                color: _catColor[category],
                 borderRadius: BorderRadius.circular(18),
                 boxShadow: const [
                   BoxShadow(
                     blurRadius: 6,
                     offset: Offset(0, 4),
                     color: Colors.black26,
-                  )
+                  ),
                 ],
               ),
               child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(_catIcon[cat], size: 48, color: textColor),
+                    Icon(
+                      _catIcon[category],
+                      size: 48,
+                      color: textColor,
+                    ),
                     const SizedBox(height: 10),
                     Text(
-                      cat,
+                      category,
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -226,7 +234,7 @@ class _TipsPageState extends State<TipsPage> {
     );
   }
 
-  // ⭐ 2) VISTA DE TIPS (SIN DROPDOWN)
+  // Construye la lista de consejos de la categoría seleccionada.
   Widget _buildTipsView() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 70),
@@ -246,15 +254,17 @@ class _TipsPageState extends State<TipsPage> {
               },
             ),
           ),
-
-          // BOTÓN VOLVER AL MENÚ
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () async {
-                await _stopTts(); // ✅ detener audio al volver al menú
+                await _stopTts();
+
                 if (!mounted) return;
-                setState(() => _showCategoryMenu = true);
+
+                setState(() {
+                  _showCategoryMenu = true;
+                });
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFE9D8FF),
@@ -266,7 +276,7 @@ class _TipsPageState extends State<TipsPage> {
                 elevation: 4,
               ),
               child: const Text(
-                "Volver al menú",
+                'Volver al menú',
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
@@ -280,6 +290,7 @@ class _TipsPageState extends State<TipsPage> {
   }
 }
 
+// Tarjeta individual para mostrar y reproducir un consejo.
 class _TipCard extends StatelessWidget {
   final String text;
   final VoidCallback onTap;
@@ -309,7 +320,7 @@ class _TipCard extends StatelessWidget {
               blurRadius: 6,
               offset: Offset(0, 2),
               color: Color(0x22000000),
-            )
+            ),
           ],
         ),
         child: Row(
@@ -333,9 +344,3 @@ class _TipCard extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
-

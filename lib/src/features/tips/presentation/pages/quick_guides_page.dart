@@ -11,7 +11,7 @@ class QuickGuidesPage extends StatefulWidget {
 }
 
 class _QuickGuidesPageState extends State<QuickGuidesPage> {
-  // Paleta pastel exacta
+  // Definición de colores utilizados para las categorías.
   static const Color yellow = Color(0xFFFFF49F);
   static const Color pink = Color(0xFFFF9FA1);
   static const Color blue = Color(0xFF9ED3FF);
@@ -23,93 +23,94 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
   final FlutterTts _tts = FlutterTts();
   final Random _rnd = Random();
 
-  // PRIMERA VISTA: menú de categorías
+  // Controla si se muestra el menú principal o la vista de contenido.
   bool _showCategoryMenu = true;
 
+  // Información agrupada por categorías.
   final Map<String, List<String>> _guidesByCategory = {
-    "Emergencia": [
-      "Mantén la calma y acompaña al paciente en todo momento.",
-      "Si se desorienta, llévalo a un lugar seguro y familiar.",
-      "Verifica signos vitales si hay caída.",
-      "Evita mover al paciente si siente dolor intenso.",
-      "Llama a emergencias si presenta cambios bruscos de conducta.",
-      "Asegura que tenga identificación siempre consigo.",
-      "Busca un lugar tranquilo para evitar sobreestimulación.",
-      "Llama a un familiar si la situación se complica.",
-      "Revisa si tomó sus medicamentos correctamente.",
-      "Mantente atento a signos de deshidratación o fiebre.",
+    'Emergencia': [
+      'Mantén la calma y acompaña al paciente en todo momento.',
+      'Si se desorienta, llévalo a un lugar seguro y familiar.',
+      'Verifica signos vitales si hay caída.',
+      'Evita mover al paciente si siente dolor intenso.',
+      'Llama a emergencias si presenta cambios bruscos de conducta.',
+      'Asegura que tenga identificación siempre consigo.',
+      'Busca un lugar tranquilo para evitar sobreestimulación.',
+      'Llama a un familiar si la situación se complica.',
+      'Revisa si tomó sus medicamentos correctamente.',
+      'Mantente atento a signos de deshidratación o fiebre.',
     ],
-    "Rutina": [
-      "Establece horarios fijos para levantarse y dormir.",
-      "Organiza la ropa un día antes.",
-      "Divide actividades en pasos sencillos.",
-      "Incluye pausas para evitar cansancio.",
-      "Usa recordatorios visuales en casa.",
-      "Mantén rutinas constantes para generar seguridad.",
-      "Evita cambios bruscos de última hora.",
-      "Realiza actividades tranquilas antes de dormir.",
-      "Ordena el entorno para reducir estrés.",
-      "Permite que participe en tareas simples.",
+    'Rutina': [
+      'Establece horarios fijos para levantarse y dormir.',
+      'Organiza la ropa un día antes.',
+      'Divide actividades en pasos sencillos.',
+      'Incluye pausas para evitar cansancio.',
+      'Usa recordatorios visuales en casa.',
+      'Mantén rutinas constantes para generar seguridad.',
+      'Evita cambios bruscos de última hora.',
+      'Realiza actividades tranquilas antes de dormir.',
+      'Ordena el entorno para reducir estrés.',
+      'Permite que participe en tareas simples.',
     ],
-    "Comunicación": [
-      "Habla despacio y usa frases cortas.",
-      "Haz contacto visual siempre.",
-      "Haz preguntas simples de sí/no.",
-      "Usa gestos o imágenes como apoyo.",
-      "Evita discusiones o correcciones duras.",
-      "Dale tiempo para responder.",
-      "Evita hablar rápido.",
-      "Refuerza con gestos calmados.",
-      "Escucha sin interrumpir.",
-      "Valida sus emociones cuando esté confundido.",
+    'Comunicación': [
+      'Habla despacio y usa frases cortas.',
+      'Haz contacto visual siempre.',
+      'Haz preguntas simples de sí/no.',
+      'Usa gestos o imágenes como apoyo.',
+      'Evita discusiones o correcciones duras.',
+      'Dale tiempo para responder.',
+      'Evita hablar rápido.',
+      'Refuerza con gestos calmados.',
+      'Escucha sin interrumpir.',
+      'Valida sus emociones cuando esté confundido.',
     ],
-    "Seguridad": [
-      "Retira alfombras que puedan causar caídas.",
-      "Asegura puertas y ventanas.",
-      "Coloca iluminación nocturna.",
-      "Guarda objetos peligrosos fuera de alcance.",
-      "Evita pisos mojados.",
-      "Coloca barandales en lugares clave.",
-      "Mantén productos tóxicos bajo llave.",
-      "Evita cables sueltos.",
-      "Supervisa al usar la cocina.",
-      "Usa calzado seguro y cómodo.",
+    'Seguridad': [
+      'Retira alfombras que puedan causar caídas.',
+      'Asegura puertas y ventanas.',
+      'Coloca iluminación nocturna.',
+      'Guarda objetos peligrosos fuera de alcance.',
+      'Evita pisos mojados.',
+      'Coloca barandales en lugares clave.',
+      'Mantén productos tóxicos bajo llave.',
+      'Evita cables sueltos.',
+      'Supervisa al usar la cocina.',
+      'Usa calzado seguro y cómodo.',
     ],
-    "Medicina": [
-      "Usa un pastillero semanal para organizar medicamentos.",
-      "Configura alarmas para recordar horarios.",
-      "No cambies dosis sin consultar al médico.",
-      "Registra efectos secundarios inusuales.",
-      "Verifica que no falte ninguna dosis.",
-      "Guarda medicamentos fuera del alcance.",
-      "Acompáñalo mientras los toma.",
-      "Ten la receta médica a la mano.",
-      "Revisa fechas de caducidad.",
-      "No mezcles medicamentos sin supervisión.",
+    'Medicina': [
+      'Usa un pastillero semanal para organizar medicamentos.',
+      'Configura alarmas para recordar horarios.',
+      'No cambies dosis sin consultar al médico.',
+      'Registra efectos secundarios inusuales.',
+      'Verifica que no falte ninguna dosis.',
+      'Guarda medicamentos fuera del alcance.',
+      'Acompáñalo mientras los toma.',
+      'Ten la receta médica a la mano.',
+      'Revisa fechas de caducidad.',
+      'No mezcles medicamentos sin supervisión.',
     ],
   };
 
-  // Colores de categoría
+  // Color asociado a cada categoría.
   late final Map<String, Color> _catColor = {
-    "Emergencia": yellow,
-    "Rutina": pink,
-    "Comunicación": blue,
-    "Seguridad": green,
-    "Medicina": purple,
+    'Emergencia': yellow,
+    'Rutina': pink,
+    'Comunicación': blue,
+    'Seguridad': green,
+    'Medicina': purple,
   };
 
-  // Íconos representativos
+  // Icono asociado a cada categoría.
   late final Map<String, IconData> _catIcon = {
-    "Emergencia": Icons.warning_rounded,
-    "Rutina": Icons.schedule_rounded,
-    "Comunicación": Icons.chat_rounded,
-    "Seguridad": Icons.shield_rounded,
-    "Medicina": Icons.medical_services_rounded,
+    'Emergencia': Icons.warning_rounded,
+    'Rutina': Icons.schedule_rounded,
+    'Comunicación': Icons.chat_rounded,
+    'Seguridad': Icons.shield_rounded,
+    'Medicina': Icons.medical_services_rounded,
   };
 
   late final List<String> _categories;
 
-  String _selected = "Emergencia";
+  String _selected = 'Emergencia';
   List<String> _visible = [];
 
   @override
@@ -119,36 +120,40 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
     _configureTts();
   }
 
+  // Configura parámetros del motor de texto a voz.
   Future<void> _configureTts() async {
-    await _tts.setLanguage("es-MX");
+    await _tts.setLanguage('es-MX');
     await _tts.setPitch(1.0);
     await _tts.setSpeechRate(0.5);
   }
 
-  // ✅ STOP centralizado (se usa en todos los casos)
+  // Detiene cualquier reproducción activa.
   Future<void> _stopTts() async {
     try {
       await _tts.stop();
     } catch (_) {
-      // Ignorar errores del motor de TTS para no romper la navegación
+      // Se ignoran errores internos del motor.
     }
   }
 
-  // Cargar categoría
-  Future<void> _loadCategory(String cat) async {
+  // Carga y mezcla aleatoriamente el contenido seleccionado.
+  Future<void> _loadCategory(String category) async {
     await _stopTts();
-    _selected = cat;
 
-    final pool = _guidesByCategory[cat]!;
-    final shuffled = List<String>.from(pool)..shuffle(_rnd);
+    _selected = category;
+
+    final shuffled =
+        List<String>.from(_guidesByCategory[category]!)..shuffle(_rnd);
 
     if (!mounted) return;
+
     setState(() {
       _visible = shuffled;
       _showCategoryMenu = false;
     });
   }
 
+  // Reproduce una guía mediante texto a voz.
   Future<void> _speak(String text) async {
     await _stopTts();
     await _tts.speak(text);
@@ -164,22 +169,23 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: true,
-      onPopInvoked: (didPop) async {
-        // ✅ Si el usuario sale con el botón atrás/gesto, detenemos el audio
+      onPopInvokedWithResult: (didPop, result) async {
+        // Detiene reproducción al salir mediante navegación del sistema.
         await _stopTts();
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text("Guías"),
+          title: const Text('Guías'),
           centerTitle: true,
           elevation: 0,
         ),
-        body: _showCategoryMenu ? _buildCategoryMenu() : _buildGuidesView(),
+        body: _showCategoryMenu
+            ? _buildCategoryMenu()
+            : _buildGuidesView(),
       ),
     );
   }
 
-  // 1️⃣ MENÚ DE CATEGORÍAS
   Widget _buildCategoryMenu() {
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -187,12 +193,12 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
         crossAxisCount: 2,
         crossAxisSpacing: 14,
         mainAxisSpacing: 14,
-        children: _categories.map((cat) {
+        children: _categories.map((category) {
           return GestureDetector(
-            onTap: () => _loadCategory(cat),
+            onTap: () => _loadCategory(category),
             child: Container(
               decoration: BoxDecoration(
-                color: _catColor[cat],
+                color: _catColor[category],
                 borderRadius: BorderRadius.circular(18),
                 boxShadow: const [
                   BoxShadow(
@@ -206,16 +212,19 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(_catIcon[cat], size: 48, color: textColor),
+                    Icon(
+                      _catIcon[category],
+                      size: 48,
+                      color: textColor,
+                    ),
                     const SizedBox(height: 10),
                     Text(
-                      cat,
+                      category,
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: textColor,
                       ),
-                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
@@ -227,15 +236,11 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
     );
   }
 
-  // 2️⃣ VISTA DE GUÍAS (SIN DROPDOWN)
   Widget _buildGuidesView() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 70),
       child: Column(
         children: [
-          const SizedBox(height: 10),
-
-          // LISTA DE GUÍAS
           Expanded(
             child: ListView.builder(
               itemCount: _visible.length,
@@ -249,34 +254,19 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
               },
             ),
           ),
-
-          // BOTÓN NUEVO — MUY VISIBLE
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () async {
-                // ✅ al volver al menú, detenemos el TTS
                 await _stopTts();
+
                 if (!mounted) return;
-                setState(() => _showCategoryMenu = true);
+
+                setState(() {
+                  _showCategoryMenu = true;
+                });
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    const Color(0xFFE9D8FF), // violeta pastel claro
-                foregroundColor: const Color(0xFF6B2FAF), // texto morado
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                elevation: 4,
-              ),
-              child: const Text(
-                "Volver al menú",
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              child: const Text('Volver al menú'),
             ),
           ),
         ],
@@ -309,38 +299,16 @@ class _GuideCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(14),
-          boxShadow: const [
-            BoxShadow(
-              blurRadius: 6,
-              offset: Offset(0, 2),
-              color: Color(0x22000000),
-            )
-          ],
         ),
         child: Row(
           children: [
-            Icon(icon, size: 22, color: Colors.black),
+            Icon(icon),
             const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                text,
-                style: const TextStyle(
-                  fontSize: 15.5,
-                  color: Colors.black,
-                  height: 1.3,
-                ),
-              ),
-            ),
-            const Icon(Icons.volume_up, size: 22, color: Colors.black),
+            Expanded(child: Text(text)),
+            const Icon(Icons.volume_up),
           ],
         ),
       ),
     );
   }
 }
-
-
-
-
-
-
