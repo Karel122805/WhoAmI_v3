@@ -383,51 +383,46 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                           color: colors.textSecondary,
                         ),
                       ),
-                      const SizedBox(height: 20),
-                      _PillButton(
-                        color: context.isDark
-                            ? colors.secondaryButton
-                            : kPurple,
-                        icon: Icons.people_outline,
-                        text: 'Pacientes',
-                        onTap: () =>
-                            Navigator.pushNamed(context, PatientsListPage.route),
-                      ),
-                      _PillButton(
-                        color: context.isDark
-                            ? colors.secondaryButton
-                            : kPurple,
-                        icon: Icons.menu_book_outlined,
-                        text: 'Guías',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const QuickGuidesPage()),
-                        ),
-                      ),
-                      _PillButton(
-                        color: context.isDark
-                            ? colors.secondaryButton
-                            : kPurple,
-                        icon: Icons.event_note_outlined,
-                        text: 'Recuerdos',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const CalendarPage()),
-                        ),
-                      ),
-                      _PillButton(
-                        color: context.isDark
-                            ? colors.secondaryButton
-                            : kPurple,
-                        icon: Icons.chat_bubble_outline,
-                        text: 'Asistente',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const AssistantPage()),
-                        ),
-                      ),
+                   const SizedBox(height: 20),
+_PillButton(
+  color: context.isDark ? colors.secondaryButton : kPurple,
+  icon: Icons.people_outline,
+  text: 'Pacientes',
+  onTap: () => Navigator.pushNamed(context, PatientsListPage.route),
+),
+_PillButton(
+  color: context.isDark ? colors.secondaryButton : kPurple,
+  icon: Icons.menu_book_outlined,
+  text: 'Guías',
+  onTap: () => Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const QuickGuidesPage()),
+  ),
+),
+_PillButton(
+  color: context.isDark ? colors.secondaryButton : kPurple,
+  icon: Icons.recommend_outlined,
+  text: 'Recomendaciones',
+  onTap: () => Navigator.pushNamed(context, '/recommendations'),
+),
+_PillButton(
+  color: context.isDark ? colors.secondaryButton : kPurple,
+  icon: Icons.event_note_outlined,
+  text: 'Recuerdos',
+  onTap: () => Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const CalendarPage()),
+  ),
+),
+_PillButton(
+  color: context.isDark ? colors.secondaryButton : kPurple,
+  icon: Icons.chat_bubble_outline,
+  text: 'Asistente',
+  onTap: () => Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const AssistantPage()),
+  ),
+),
                       const SizedBox(height: 24),
                     ],
                   ),

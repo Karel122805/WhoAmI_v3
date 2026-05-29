@@ -32,6 +32,8 @@ import 'package:whoami_app/src/features/games/presentation/pages/memorama_page.d
 import 'package:whoami_app/src/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
 
+import 'package:whoami_app/src/features/recommendations/presentation/recommendations_screen.dart';
+
 class WhoAmIApp extends StatefulWidget {
   const WhoAmIApp({super.key});
 
@@ -155,10 +157,11 @@ class _WhoAmIAppState extends State<WhoAmIApp> {
 
             NotificationsPage.route: (_) => const NotificationsPage(),
             AssistantPage.route: (_) => const AssistantPage(),
+
+            '/recommendations': (_) => const RecommendationsScreen(),
           },
         );
       },
     );
   }
 }
-
