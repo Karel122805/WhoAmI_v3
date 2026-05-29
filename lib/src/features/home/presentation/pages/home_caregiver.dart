@@ -13,6 +13,7 @@ import 'package:whoami_app/src/features/memories/presentation/pages/calendar_pag
 import 'package:whoami_app/src/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:whoami_app/src/features/emergency/presentation/pages/emergency_map_page.dart';
 import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
+import 'package:whoami_app/src/features/support_contacts/presentation/support_contacts_screen.dart';
 
 import 'package:whoami_app/src/features/memories/data/memories_scheduler.dart';
 import 'package:whoami_app/src/features/notifications/data/notifications_service.dart';
@@ -49,7 +50,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
       }
       await _loadNotifCount();
     } catch (e) {
-      debugPrint('⚠️ Error en inicialización del HomeCaregiver: $e');
+      debugPrint('Error en inicialización del HomeCaregiver: $e');
     }
   }
 
@@ -69,7 +70,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
 
       await _loadNotifCount();
     } catch (e) {
-      debugPrint("⚠️ Error resolviendo emergencia: $e");
+      debugPrint('Error resolviendo emergencia: $e');
     }
   }
 
@@ -97,12 +98,12 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
         final consultantName = data['consultantName'] ?? 'Consultante';
         final lat = data['lat'];
         final lng = data['lng'];
-        final title = data['title'] ?? '🚨 Emergencia detectada';
+        final title = data['title'] ?? 'Emergencia detectada';
         final body = data['body'] ?? '$consultantName necesita ayuda.';
 
         if (lat == null || lng == null) continue;
 
-        debugPrint('🆘 Emergencia recibida en tiempo real para cuidador $uid');
+        debugPrint('Emergencia recibida en tiempo real para cuidador $uid');
 
         if (!kIsWeb) {
           NotificationsService.showInstant(title: title, body: body);
@@ -123,9 +124,8 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
           final shadowColor = context.isDark
               ? Colors.black.withValues(alpha: 0.45)
               : Colors.black.withValues(alpha: 0.20);
-          final dangerAccent = context.isDark
-              ? const Color(0xFFFF8E8E)
-              : Colors.red;
+          final dangerAccent =
+              context.isDark ? const Color(0xFFFF8E8E) : Colors.red;
 
           showDialog(
             context: context,
@@ -147,7 +147,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                       color: shadowColor,
                       blurRadius: 22,
                       offset: const Offset(0, 8),
-                    )
+                    ),
                   ],
                   border: Border.all(
                     color: context.isDark
@@ -217,10 +217,12 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                       width: double.infinity,
                       height: 48,
                       child: ElevatedButton.icon(
-                        icon: const Icon(Icons.navigation_rounded,
-                            color: Colors.white),
+                        icon: const Icon(
+                          Icons.navigation_rounded,
+                          color: Colors.white,
+                        ),
                         label: const Text(
-                          "Abrir en Google Maps",
+                          'Abrir en Google Maps',
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 16,
@@ -241,8 +243,10 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                           final uri = Uri.parse(url);
 
                           if (await canLaunchUrl(uri)) {
-                            await launchUrl(uri,
-                                mode: LaunchMode.externalApplication);
+                            await launchUrl(
+                              uri,
+                              mode: LaunchMode.externalApplication,
+                            );
                           }
 
                           if (context.mounted) Navigator.pop(context);
@@ -257,7 +261,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                         await _resolveEmergency(alertId);
                       },
                       child: Text(
-                        "Cerrar",
+                        'Cerrar',
                         style: TextStyle(
                           color: colors.textPrimary,
                           fontSize: 15,
@@ -274,7 +278,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
         });
       }
     }, onError: (error) {
-      debugPrint('⚠️ Error escuchando emergencias: $error');
+      debugPrint('Error escuchando emergencias: $error');
     });
   }
 
@@ -288,7 +292,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
         _loadingNotif = false;
       });
     } catch (e) {
-      debugPrint('⚠️ Error al cargar notificaciones pendientes: $e');
+      debugPrint('Error al cargar notificaciones pendientes: $e');
       if (!mounted) return;
       setState(() => _loadingNotif = false);
     }
@@ -334,6 +338,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                                 .snapshots(),
                             builder: (context, docSnap) {
                               String name = 'Cuidador';
+
                               if (docSnap.hasData &&
                                   docSnap.data!.data() != null) {
                                 final data = docSnap.data!.data()!;
@@ -383,46 +388,73 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                           color: colors.textSecondary,
                         ),
                       ),
-                   const SizedBox(height: 20),
-_PillButton(
-  color: context.isDark ? colors.secondaryButton : kPurple,
-  icon: Icons.people_outline,
-  text: 'Pacientes',
-  onTap: () => Navigator.pushNamed(context, PatientsListPage.route),
-),
-_PillButton(
-  color: context.isDark ? colors.secondaryButton : kPurple,
-  icon: Icons.menu_book_outlined,
-  text: 'Guías',
-  onTap: () => Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const QuickGuidesPage()),
-  ),
-),
-_PillButton(
-  color: context.isDark ? colors.secondaryButton : kPurple,
-  icon: Icons.recommend_outlined,
-  text: 'Recomendaciones',
-  onTap: () => Navigator.pushNamed(context, '/recommendations'),
-),
-_PillButton(
-  color: context.isDark ? colors.secondaryButton : kPurple,
-  icon: Icons.event_note_outlined,
-  text: 'Recuerdos',
-  onTap: () => Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const CalendarPage()),
-  ),
-),
-_PillButton(
-  color: context.isDark ? colors.secondaryButton : kPurple,
-  icon: Icons.chat_bubble_outline,
-  text: 'Asistente',
-  onTap: () => Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const AssistantPage()),
-  ),
-),
+                      const SizedBox(height: 20),
+                      _PillButton(
+                        color:
+                            context.isDark ? colors.secondaryButton : kPurple,
+                        icon: Icons.people_outline,
+                        text: 'Pacientes',
+                        onTap: () => Navigator.pushNamed(
+                          context,
+                          PatientsListPage.route,
+                        ),
+                      ),
+                      _PillButton(
+                        color:
+                            context.isDark ? colors.secondaryButton : kPurple,
+                        icon: Icons.menu_book_outlined,
+                        text: 'Guías',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const QuickGuidesPage(),
+                          ),
+                        ),
+                      ),
+                      _PillButton(
+                        color:
+                            context.isDark ? colors.secondaryButton : kPurple,
+                        icon: Icons.recommend_outlined,
+                        text: 'Recomendaciones',
+                        onTap: () => Navigator.pushNamed(
+                          context,
+                          '/recommendations',
+                        ),
+                      ),
+                      _PillButton(
+                        color:
+                            context.isDark ? colors.secondaryButton : kPurple,
+                        icon: Icons.contact_phone_outlined,
+                        text: 'Contactos de apoyo',
+                        onTap: () => Navigator.pushNamed(
+                          context,
+                          SupportContactsScreen.route,
+                        ),
+                      ),
+                      _PillButton(
+                        color:
+                            context.isDark ? colors.secondaryButton : kPurple,
+                        icon: Icons.event_note_outlined,
+                        text: 'Recuerdos',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const CalendarPage(),
+                          ),
+                        ),
+                      ),
+                      _PillButton(
+                        color:
+                            context.isDark ? colors.secondaryButton : kPurple,
+                        icon: Icons.chat_bubble_outline,
+                        text: 'Asistente',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AssistantPage(),
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 24),
                     ],
                   ),
@@ -436,8 +468,11 @@ _PillButton(
               child: Padding(
                 padding: const EdgeInsets.only(left: 8, top: 4),
                 child: IconButton(
-                  icon:
-                      Icon(Icons.settings, color: colors.textPrimary, size: 28),
+                  icon: Icon(
+                    Icons.settings,
+                    color: colors.textPrimary,
+                    size: 28,
+                  ),
                   onPressed: () => Navigator.pushNamed(context, '/settings'),
                   tooltip: 'Ajustes',
                 ),
@@ -486,8 +521,11 @@ class _NotificationBell extends StatelessWidget {
       children: [
         IconButton(
           onPressed: loading ? null : onTap,
-          icon: Icon(Icons.notifications_none_rounded,
-              color: colors.textPrimary, size: 28),
+          icon: Icon(
+            Icons.notifications_none_rounded,
+            color: colors.textPrimary,
+            size: 28,
+          ),
           tooltip: 'Notificaciones',
         ),
         if (loading)
@@ -510,9 +548,7 @@ class _NotificationBell extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: context.isDark
-                    ? const Color(0xFFC35B5B)
-                    : Colors.red,
+                color: context.isDark ? const Color(0xFFC35B5B) : Colors.red,
                 borderRadius: BorderRadius.circular(12),
               ),
               constraints: const BoxConstraints(minWidth: 20, minHeight: 18),
@@ -583,8 +619,3 @@ class _PillButton extends StatelessWidget {
     );
   }
 }
-
-
-
-
-

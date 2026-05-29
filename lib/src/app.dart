@@ -34,6 +34,8 @@ import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_p
 
 import 'package:whoami_app/src/features/recommendations/presentation/recommendations_screen.dart';
 
+import 'package:whoami_app/src/features/support_contacts/presentation/support_contacts_screen.dart';
+
 class WhoAmIApp extends StatefulWidget {
   const WhoAmIApp({super.key});
 
@@ -134,6 +136,7 @@ class _WhoAmIAppState extends State<WhoAmIApp> {
 
             '/home/caregiver': (ctx) {
               final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
+
               return HomeCaregiverPage(
                 displayName: args?['name'] as String?,
               );
@@ -141,6 +144,7 @@ class _WhoAmIAppState extends State<WhoAmIApp> {
 
             '/home/consultant': (ctx) {
               final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
+
               return HomeConsultantPage(
                 displayName: args?['name'] as String?,
               );
@@ -159,6 +163,9 @@ class _WhoAmIAppState extends State<WhoAmIApp> {
             AssistantPage.route: (_) => const AssistantPage(),
 
             '/recommendations': (_) => const RecommendationsScreen(),
+
+            SupportContactsScreen.route: (_) =>
+                const SupportContactsScreen(),
           },
         );
       },
