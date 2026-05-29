@@ -33,8 +33,8 @@ import 'package:whoami_app/src/features/notifications/presentation/pages/notific
 import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
 
 import 'package:whoami_app/src/features/recommendations/presentation/recommendations_screen.dart';
-
 import 'package:whoami_app/src/features/support_contacts/presentation/support_contacts_screen.dart';
+import 'package:whoami_app/src/features/emergency/presentation/pages/panic_button_page.dart';
 
 class WhoAmIApp extends StatefulWidget {
   const WhoAmIApp({super.key});
@@ -163,9 +163,8 @@ class _WhoAmIAppState extends State<WhoAmIApp> {
             AssistantPage.route: (_) => const AssistantPage(),
 
             '/recommendations': (_) => const RecommendationsScreen(),
-
-            SupportContactsScreen.route: (_) =>
-                const SupportContactsScreen(),
+            SupportContactsScreen.route: (_) => const SupportContactsScreen(),
+            PanicButtonPage.route: (_) => const PanicButtonPage(),
           },
         );
       },

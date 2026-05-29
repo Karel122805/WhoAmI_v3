@@ -12,6 +12,7 @@ import 'package:whoami_app/src/features/patients/presentation/pages/patients_lis
 import 'package:whoami_app/src/features/memories/presentation/pages/calendar_page.dart';
 import 'package:whoami_app/src/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:whoami_app/src/features/emergency/presentation/pages/emergency_map_page.dart';
+import 'package:whoami_app/src/features/emergency/presentation/pages/panic_button_page.dart';
 import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
 import 'package:whoami_app/src/features/support_contacts/presentation/support_contacts_screen.dart';
 
@@ -20,6 +21,7 @@ import 'package:whoami_app/src/features/notifications/data/notifications_service
 
 class HomeCaregiverPage extends StatefulWidget {
   const HomeCaregiverPage({super.key, this.displayName});
+
   static const route = '/home/caregiver';
   final String? displayName;
 
@@ -102,8 +104,6 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
         final body = data['body'] ?? '$consultantName necesita ayuda.';
 
         if (lat == null || lng == null) continue;
-
-        debugPrint('Emergencia recibida en tiempo real para cuidador $uid');
 
         if (!kIsWeb) {
           NotificationsService.showInstant(title: title, body: body);
@@ -429,6 +429,15 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                         onTap: () => Navigator.pushNamed(
                           context,
                           SupportContactsScreen.route,
+                        ),
+                      ),
+                      _PillButton(
+                        color: colors.emergency,
+                        icon: Icons.emergency_share_rounded,
+                        text: 'Botón de pánico',
+                        onTap: () => Navigator.pushNamed(
+                          context,
+                          PanicButtonPage.route,
                         ),
                       ),
                       _PillButton(
