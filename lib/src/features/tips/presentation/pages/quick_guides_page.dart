@@ -1,9 +1,12 @@
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:whoami_app/src/core/theme/app_theme.dart';
 
 class QuickGuidesPage extends StatefulWidget {
   const QuickGuidesPage({super.key});
+
   static const route = '/quick-guides';
 
   @override
@@ -11,22 +14,11 @@ class QuickGuidesPage extends StatefulWidget {
 }
 
 class _QuickGuidesPageState extends State<QuickGuidesPage> {
-  // Definición de colores utilizados para las categorías.
-  static const Color yellow = Color(0xFFFFF49F);
-  static const Color pink = Color(0xFFFF9FA1);
-  static const Color blue = Color(0xFF9ED3FF);
-  static const Color green = Color(0xFF9EEE97);
-  static const Color purple = Color(0xFFD99FFF);
-
-  static const Color textColor = Color(0xFF111111);
-
   final FlutterTts _tts = FlutterTts();
   final Random _rnd = Random();
 
-  // Controla si se muestra el menú principal o la vista de contenido.
   bool _showCategoryMenu = true;
 
-  // Información agrupada por categorías.
   final Map<String, List<String>> _guidesByCategory = {
     'Emergencia': [
       'Mantén la calma y acompaña al paciente en todo momento.',
@@ -90,19 +82,9 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
     ],
   };
 
-  // Color asociado a cada categoría.
-  late final Map<String, Color> _catColor = {
-    'Emergencia': yellow,
-    'Rutina': pink,
-    'Comunicación': blue,
-    'Seguridad': green,
-    'Medicina': purple,
-  };
-
-  // Icono asociado a cada categoría.
   late final Map<String, IconData> _catIcon = {
     'Emergencia': Icons.warning_rounded,
-    'Rutina': Icons.schedule_rounded,
+    'Rutina': Icons.bedtime_rounded,
     'Comunicación': Icons.chat_rounded,
     'Seguridad': Icons.shield_rounded,
     'Medicina': Icons.medical_services_rounded,
@@ -120,27 +102,26 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
     _configureTts();
   }
 
-  // Configura parámetros del motor de texto a voz.
   Future<void> _configureTts() async {
     await _tts.setLanguage('es-MX');
     await _tts.setPitch(1.0);
     await _tts.setSpeechRate(0.5);
+    await _tts.setVolume(1.0);
   }
 
-  // Detiene cualquier reproducción activa.
   Future<void> _stopTts() async {
     try {
       await _tts.stop();
-    } catch (_) {
-      // Se ignoran errores internos del motor.
-    }
+    } catch (_) {}
   }
 
-  // Carga y mezcla aleatoriamente el contenido seleccionado.
+  Future<void> _speak(String text) async {
+    await _stopTts();
+    await _tts.speak(text);
+  }
+
   Future<void> _loadCategory(String category) async {
     await _stopTts();
-
-    _selected = category;
 
     final shuffled =
         List<String>.from(_guidesByCategory[category]!)..shuffle(_rnd);
@@ -148,15 +129,34 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
     if (!mounted) return;
 
     setState(() {
+      _selected = category;
       _visible = shuffled;
       _showCategoryMenu = false;
     });
   }
 
-  // Reproduce una guía mediante texto a voz.
-  Future<void> _speak(String text) async {
+  Future<void> _backToMenu() async {
     await _stopTts();
-    await _tts.speak(text);
+
+    if (!mounted) return;
+
+    setState(() {
+      _showCategoryMenu = true;
+      _visible = [];
+    });
+  }
+
+  Future<void> _handleBack() async {
+    if (!_showCategoryMenu) {
+      await _backToMenu();
+      return;
+    }
+
+    await _stopTts();
+
+    if (!mounted) return;
+
+    Navigator.of(context).maybePop();
   }
 
   @override
@@ -167,26 +167,39 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     return PopScope(
-      canPop: true,
+      canPop: _showCategoryMenu,
       onPopInvokedWithResult: (didPop, result) async {
-        // Detiene reproducción al salir mediante navegación del sistema.
-        await _stopTts();
+        if (didPop) {
+          await _stopTts();
+          return;
+        }
+
+        if (!_showCategoryMenu) {
+          await _backToMenu();
+        }
       },
       child: Scaffold(
+        backgroundColor: colors.pageBackground,
         appBar: AppBar(
-          title: const Text('Guías'),
+          title: Text(_showCategoryMenu ? 'Guías' : _selected),
           centerTitle: true,
           elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: _handleBack,
+          ),
         ),
-        body: _showCategoryMenu
-            ? _buildCategoryMenu()
-            : _buildGuidesView(),
+        body: _showCategoryMenu ? _buildCategoryMenu() : _buildGuidesView(),
       ),
     );
   }
 
   Widget _buildCategoryMenu() {
+    final colors = context.appColors;
+
     return Padding(
       padding: const EdgeInsets.all(20),
       child: GridView.count(
@@ -194,42 +207,12 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
         crossAxisSpacing: 14,
         mainAxisSpacing: 14,
         children: _categories.map((category) {
-          return GestureDetector(
+          return _CategoryCard(
+            title: category,
+            icon: _catIcon[category]!,
+            color: _themeCategoryColor(category),
+            textColor: colors.textPrimary,
             onTap: () => _loadCategory(category),
-            child: Container(
-              decoration: BoxDecoration(
-                color: _catColor[category],
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: const [
-                  BoxShadow(
-                    blurRadius: 6,
-                    offset: Offset(0, 4),
-                    color: Colors.black26,
-                  )
-                ],
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _catIcon[category],
-                      size: 48,
-                      color: textColor,
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      category,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: textColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           );
         }).toList(),
       ),
@@ -245,27 +228,25 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
             child: ListView.builder(
               itemCount: _visible.length,
               itemBuilder: (_, i) {
+                final text = _visible[i];
+
                 return _GuideCard(
-                  text: _visible[i],
-                  color: _catColor[_selected]!,
+                  text: text,
+                  color: _themeCategoryColor(_selected),
                   icon: _catIcon[_selected]!,
-                  onTap: () => _speak(_visible[i]),
+                  onTap: () => _speak(text),
                 );
               },
             ),
           ),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () async {
-                await _stopTts();
-
-                if (!mounted) return;
-
-                setState(() {
-                  _showCategoryMenu = true;
-                });
-              },
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: context.appColors.secondaryButton,
+                foregroundColor: context.appColors.secondaryButtonText,
+              ),
+              onPressed: _backToMenu,
               child: const Text('Volver al menú'),
             ),
           ),
@@ -273,14 +254,95 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
       ),
     );
   }
+
+  Color _themeCategoryColor(String category) {
+    final colors = context.appColors;
+
+    switch (category) {
+      case 'Emergencia':
+        return colors.categoryYellow;
+      case 'Rutina':
+        return colors.categoryGreen;
+      case 'Comunicación':
+        return colors.categoryBlue;
+      case 'Seguridad':
+        return colors.categoryPurple;
+      case 'Medicina':
+        return colors.categoryPink;
+      default:
+        return colors.categoryBlue;
+    }
+  }
+}
+
+class _CategoryCard extends StatelessWidget {
+  const _CategoryCard({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.textColor,
+    required this.onTap,
+  });
+
+  final String title;
+  final IconData icon;
+  final Color color;
+  final Color textColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final shadowColor = context.isDark
+        ? Colors.black.withValues(alpha: 0.28)
+        : Colors.black.withValues(alpha: 0.22);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              blurRadius: 6,
+              offset: const Offset(0, 4),
+              color: shadowColor,
+            ),
+          ],
+          border: Border.all(
+            color: context.isDark
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.transparent,
+          ),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 48,
+                color: textColor,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: textColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _GuideCard extends StatelessWidget {
-  final String text;
-  final VoidCallback onTap;
-  final Color color;
-  final IconData icon;
-
   const _GuideCard({
     required this.text,
     required this.onTap,
@@ -288,8 +350,15 @@ class _GuideCard extends StatelessWidget {
     required this.icon,
   });
 
+  final String text;
+  final VoidCallback onTap;
+  final Color color;
+  final IconData icon;
+
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
@@ -299,13 +368,35 @@ class _GuideCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: context.isDark
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.transparent,
+          ),
         ),
         child: Row(
           children: [
-            Icon(icon),
+            Icon(
+              icon,
+              color: colors.textPrimary,
+            ),
             const SizedBox(width: 12),
-            Expanded(child: Text(text)),
-            const Icon(Icons.volume_up),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  height: 1.25,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.volume_up,
+              color: colors.textPrimary,
+            ),
           ],
         ),
       ),
