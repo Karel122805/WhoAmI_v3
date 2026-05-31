@@ -431,15 +431,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                           SupportContactsScreen.route,
                         ),
                       ),
-                      _PillButton(
-                        color: colors.emergency,
-                        icon: Icons.emergency_share_rounded,
-                        text: 'Botón de pánico',
-                        onTap: () => Navigator.pushNamed(
-                          context,
-                          PanicButtonPage.route,
-                        ),
-                      ),
+              
                       _PillButton(
                         color:
                             context.isDark ? colors.secondaryButton : kPurple,
@@ -462,6 +454,15 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                           MaterialPageRoute(
                             builder: (_) => const AssistantPage(),
                           ),
+                        ),
+                      ),
+                      _PillButton(
+                        color: colors.emergency,
+                        icon: Icons.emergency_share_rounded,
+                        text: 'Botón de pánico',
+                        onTap: () => Navigator.pushNamed(
+                          context,
+                          PanicButtonPage.route,
                         ),
                       ),
                       const SizedBox(height: 24),
