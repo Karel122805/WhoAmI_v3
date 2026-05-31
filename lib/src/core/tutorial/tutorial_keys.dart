@@ -1,0 +1,22 @@
+enum TutorialKey {
+  choiceStart,
+  login,
+  registerName,
+  registerRole,
+  registerPatient,
+  homeCaregiver,
+  homeConsultant,
+  calendar,
+  notifications,
+  settings,
+  memories,
+  patientList,
+  tips,
+  games,
+}
+
+
+
+
+
+

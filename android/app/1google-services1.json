@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "103480993491",
+    "project_id": "whoami-app-1234",
+    "storage_bucket": "whoami-app-1234.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:103480993491:android:01a7595813486cc8629626",
+        "android_client_info": {
+          "package_name": "com.example.whoami_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "103480993491-8et2rud863lvoembbj6epfnhsjeh1j3t.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.whoami_app",
+            "certificate_hash": "31fbcf92182bb6045ea8c2debb9285e0c03e1085"
+          }
+        },
+        {
+          "client_id": "103480993491-r0m6052fngmo9k5hikkf2iqnn432p29r.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCSaqn5YqieJdVhyP27PegyqUfBxffj-Qs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "103480993491-r0m6052fngmo9k5hikkf2iqnn432p29r.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "103480993491-s5i82m464opjg99p3nlqkkhfhcb7psv3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.whoamiApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -18,12 +18,17 @@ pluginManagement {
 }
 
 plugins {
+    // 🔧 Plugin principal de Flutter
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
+
+    // 🔧 Plugin de Android
     id("com.android.application") version "8.9.1" apply false
-    // START: FlutterFire Configuration
-    id("com.google.gms.google-services") version("4.3.15") apply false
-    // END: FlutterFire Configuration
+
+    // 🔧 Plugin de Kotlin
     id("org.jetbrains.kotlin.android") version "2.1.0" apply false
+
+    // ✅ Agregamos el plugin de Google Services con su versión
+    id("com.google.gms.google-services") version "4.4.2" apply false
 }
 
 include(":app")

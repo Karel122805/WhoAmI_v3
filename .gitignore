@@ -39,9 +39,17 @@ coverage/
 # ───────── Android ─────────
 android/.gradle/
 android/local.properties
-android/**/gradle-wrapper.jar
+
+# FIRMA ANDROID (MUY IMPORTANTE)
+android/key.properties
+android/keystore/
+*.jks
+*.keystore
+
+# Evita keystores dentro de app (por si acaso)
 android/app/*.keystore
 android/app/*.jks
+
 # Directorios de variantes (si los generas)
 android/app/debug
 android/app/profile
