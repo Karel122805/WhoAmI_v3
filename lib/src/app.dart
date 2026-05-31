@@ -32,6 +32,10 @@ import 'package:whoami_app/src/features/games/presentation/pages/memorama_page.d
 import 'package:whoami_app/src/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
 
+import 'package:whoami_app/src/features/recommendations/presentation/recommendations_screen.dart';
+import 'package:whoami_app/src/features/support_contacts/presentation/support_contacts_screen.dart';
+import 'package:whoami_app/src/features/emergency/presentation/pages/panic_button_page.dart';
+
 class WhoAmIApp extends StatefulWidget {
   const WhoAmIApp({super.key});
 
@@ -132,6 +136,7 @@ class _WhoAmIAppState extends State<WhoAmIApp> {
 
             '/home/caregiver': (ctx) {
               final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
+
               return HomeCaregiverPage(
                 displayName: args?['name'] as String?,
               );
@@ -139,6 +144,7 @@ class _WhoAmIAppState extends State<WhoAmIApp> {
 
             '/home/consultant': (ctx) {
               final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
+
               return HomeConsultantPage(
                 displayName: args?['name'] as String?,
               );
@@ -155,10 +161,13 @@ class _WhoAmIAppState extends State<WhoAmIApp> {
 
             NotificationsPage.route: (_) => const NotificationsPage(),
             AssistantPage.route: (_) => const AssistantPage(),
+
+            '/recommendations': (_) => const RecommendationsScreen(),
+            SupportContactsScreen.route: (_) => const SupportContactsScreen(),
+            PanicButtonPage.route: (_) => const PanicButtonPage(),
           },
         );
       },
     );
   }
 }
-
