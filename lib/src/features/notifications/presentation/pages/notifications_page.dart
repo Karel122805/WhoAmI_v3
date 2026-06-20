@@ -1,5 +1,6 @@
-// lib/src/ui/screens/notifications_page.dart
+// lib/src/features/notifications/presentation/pages/notifications_page.dart
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -20,8 +21,11 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   List<PendingNotificationRequest> _pending = [];
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _appNotifications = [];
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _emergencies = [];
-  final Set<int> _selectedIds = {};
+
+  final Set<String> _selectedKeys = {};
+
   bool _loading = false;
   bool _selectMode = false;
 
@@ -31,6 +35,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
     _loadAll();
   }
 
+  String _pendingKey(int id) => 'pending_$id';
+  String _appKey(String id) => 'app_$id';
+
   Future<void> _resolveEmergency(String docId) async {
     try {
       await FirebaseFirestore.instance
@@ -39,6 +46,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           .update({'active': false});
 
       final pending = await NotificationsService.pendingNotificationRequests();
+
       for (final n in pending) {
         if (n.payload == 'emergency') {
           await NotificationsService.cancel(n.id);
@@ -47,8 +55,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
       await _loadAll();
     } catch (e) {
-      debugPrint('⚠️ Error al resolver emergencia: $e');
+      debugPrint('Error al resolver emergencia: $e');
+
       if (!mounted) return;
+
       await _showOkDialog(
         context,
         title: 'Error',
@@ -60,35 +70,64 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Future<void> _loadAll() async {
     setState(() {
       _loading = true;
-      _selectedIds.clear();
+      _selectedKeys.clear();
       _selectMode = false;
     });
 
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
-      final list = await NotificationsService.pendingNotificationRequests();
-      list.sort((a, b) => a.id.compareTo(b.id));
 
+      final pendingList =
+          await NotificationsService.pendingNotificationRequests();
+
+      final filteredPending = pendingList.where((item) {
+        final payload = item.payload ?? '';
+
+        if (payload.startsWith('reminder/')) return false;
+
+        return true;
+      }).toList()
+        ..sort((a, b) => a.id.compareTo(b.id));
+
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> appDocs = [];
       List<QueryDocumentSnapshot<Map<String, dynamic>>> emergenciesDocs = [];
+
       if (uid != null) {
-        final q = await FirebaseFirestore.instance
+        final appQuery = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .collection('notifications')
+            .orderBy('timestamp', descending: true)
+            .get();
+
+        appDocs = appQuery.docs.where((doc) {
+          final data = doc.data();
+          return data['deleted'] != true;
+        }).toList();
+
+        final emergencyQuery = await FirebaseFirestore.instance
             .collection('emergencies')
             .where('caregiverId', isEqualTo: uid)
             .where('active', isEqualTo: true)
             .orderBy('timestamp', descending: true)
             .get();
-        emergenciesDocs = q.docs;
+
+        emergenciesDocs = emergencyQuery.docs;
       }
 
       if (!mounted) return;
+
       setState(() {
-        _pending = list;
+        _pending = filteredPending;
+        _appNotifications = appDocs;
         _emergencies = emergenciesDocs;
         _loading = false;
       });
     } catch (e) {
-      debugPrint('⚠️ Error cargando notificaciones: $e');
+      debugPrint('Error cargando notificaciones: $e');
+
       if (!mounted) return;
+
       setState(() => _loading = false);
     }
   }
@@ -96,34 +135,42 @@ class _NotificationsPageState extends State<NotificationsPage> {
   void _toggleSelectMode() {
     setState(() {
       _selectMode = !_selectMode;
-      if (!_selectMode) _selectedIds.clear();
+
+      if (!_selectMode) {
+        _selectedKeys.clear();
+      }
     });
   }
 
-  void _toggleSelect(int id) {
+  void _toggleSelect(String key) {
     setState(() {
-      if (_selectedIds.contains(id)) {
-        _selectedIds.remove(id);
+      if (_selectedKeys.contains(key)) {
+        _selectedKeys.remove(key);
       } else {
-        _selectedIds.add(id);
+        _selectedKeys.add(key);
       }
     });
   }
 
   void _selectAll() {
+    final allKeys = <String>[
+      ..._appNotifications.map((doc) => _appKey(doc.id)),
+      ..._pending.map((n) => _pendingKey(n.id)),
+    ];
+
     setState(() {
-      if (_selectedIds.length == _pending.length) {
-        _selectedIds.clear();
+      if (_selectedKeys.length == allKeys.length) {
+        _selectedKeys.clear();
       } else {
-        _selectedIds
+        _selectedKeys
           ..clear()
-          ..addAll(_pending.map((n) => n.id));
+          ..addAll(allKeys);
       }
     });
   }
 
   Future<void> _confirmDeleteSelected() async {
-    if (_selectedIds.isEmpty) {
+    if (_selectedKeys.isEmpty) {
       await _showOkDialog(
         context,
         title: 'Atención',
@@ -132,7 +179,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
       return;
     }
 
-    final count = _selectedIds.length;
+    final count = _selectedKeys.length;
+
     final confirm = await _showDeleteDialog(
       context,
       message: count == 1
@@ -140,26 +188,63 @@ class _NotificationsPageState extends State<NotificationsPage> {
           : '¿Deseas eliminar las $count notificaciones seleccionadas?',
     );
 
-    if (confirm == true) {
-      for (final id in _selectedIds) {
-        await NotificationsService.cancel(id);
+    if (confirm != true) return;
+
+    for (final key in _selectedKeys) {
+      if (key.startsWith('app_')) {
+        final id = key.replaceFirst('app_', '');
+        await NotificationsService.deleteAppNotification(id);
       }
-      await _loadAll();
-      if (!mounted) return;
-      await _showOkDialog(
-        context,
-        title: 'Eliminadas',
-        message: count == 1
-            ? 'La notificación fue eliminada correctamente.'
-            : '$count notificaciones fueron eliminadas correctamente.',
-      );
+
+      if (key.startsWith('pending_')) {
+        final rawId = key.replaceFirst('pending_', '');
+        final id = int.tryParse(rawId);
+
+        if (id != null) {
+          final notification = _pending.firstWhere((item) => item.id == id);
+          final payload = notification.payload ?? '';
+
+          await NotificationsService.cancel(id);
+
+          final parts = payload.split('/');
+
+          if (parts.length == 2) {
+            final uid = parts[0];
+            final memoryId = parts[1];
+
+            await FirebaseFirestore.instance
+                .collection('memories')
+                .doc(uid)
+                .collection('user_memories')
+                .doc(memoryId)
+                .update({
+              'reminder.enabled': false,
+              'reminder.nextAt': null,
+            });
+          }
+        }
+      }
     }
+
+    await _loadAll();
+
+    if (!mounted) return;
+
+    await _showOkDialog(
+      context,
+      title: 'Eliminadas',
+      message: count == 1
+          ? 'La notificación fue eliminada correctamente.'
+          : '$count notificaciones fueron eliminadas correctamente.',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final total = _pending.length + _emergencies.length;
+
+    final total =
+        _emergencies.length + _appNotifications.length + _pending.length;
 
     return Scaffold(
       backgroundColor: colors.pageBackground,
@@ -184,8 +269,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
               if (total > 0) ...[
                 const SizedBox(width: 6),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: colors.secondaryButton.withValues(alpha: 0.16),
                     borderRadius: BorderRadius.circular(12),
@@ -233,9 +320,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
               _selectMode ? Icons.close_rounded : Icons.check_box_rounded,
               color: colors.textPrimary,
             ),
-            tooltip: _selectMode
-                ? 'Salir de selección'
-                : 'Seleccionar notificaciones',
+            tooltip:
+                _selectMode ? 'Salir de selección' : 'Seleccionar notificaciones',
             onPressed: _toggleSelectMode,
           ),
         ],
@@ -256,9 +342,174 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     padding: const EdgeInsets.all(16),
                     children: [
                       ..._emergencies.map(_buildEmergencyCard),
+                      ..._appNotifications.map(_buildAppNotificationCard),
                       ..._pending.map(_buildMemoryCard),
                     ],
                   ),
+      ),
+    );
+  }
+
+  Widget _buildAppNotificationCard(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final colors = context.appColors;
+    final data = doc.data();
+
+    final key = _appKey(doc.id);
+    final selected = _selectedKeys.contains(key);
+
+    final title = (data['title'] as String?)?.trim().isNotEmpty == true
+        ? data['title'].toString()
+        : 'Notificación';
+
+    final body = (data['body'] as String?)?.trim().isNotEmpty == true
+        ? data['body'].toString()
+        : 'Sin descripción';
+
+    final type = (data['type'] as String?)?.trim() ?? 'general';
+
+    final timestamp = data['timestamp'];
+    DateTime? date;
+
+    if (timestamp is Timestamp) {
+      date = timestamp.toDate();
+    }
+
+    final icon = switch (type) {
+      'reminder' => Icons.alarm_rounded,
+      'memory' => Icons.photo_rounded,
+      'phrase' => Icons.format_quote_rounded,
+      'preventive' => Icons.health_and_safety_rounded,
+      _ => Icons.notifications_active_rounded,
+    };
+
+    return GestureDetector(
+      onTap: _selectMode
+          ? () => _toggleSelect(key)
+          : () async {
+              await NotificationsService.markAppNotificationAsRead(doc.id);
+
+              if (!mounted) return;
+
+              if (type == 'reminder') {
+                await Navigator.pushNamed(context, '/reminders');
+              }
+
+              await _loadAll();
+            },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? colors.secondaryButton : colors.border,
+            width: selected ? 2.2 : 1.2,
+          ),
+          color: selected
+              ? colors.secondaryButton.withValues(alpha: 0.14)
+              : colors.cardBackground,
+          boxShadow: context.isDark
+              ? []
+              : [
+                  BoxShadow(
+                    color: colors.border.withValues(alpha: 0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                if (_selectMode)
+                  Checkbox(
+                    value: selected,
+                    activeColor: colors.secondaryButton,
+                    checkColor: colors.secondaryButtonText,
+                    side: BorderSide(color: colors.border),
+                    onChanged: (_) => _toggleSelect(key),
+                  ),
+                Icon(
+                  icon,
+                  color: colors.secondaryButton,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: colors.textPrimary,
+                      fontSize: 17,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              body,
+              style: TextStyle(
+                color: colors.textSecondary,
+                fontSize: 14,
+                height: 1.3,
+              ),
+            ),
+            if (date != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${date.day}/${date.month}/${date.year}  '
+                '${date.hour.toString().padLeft(2, '0')}:'
+                '${date.minute.toString().padLeft(2, '0')}',
+                style: TextStyle(
+                  color: colors.textSecondary,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+            if (!_selectMode) ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  icon: Icon(
+                    type == 'reminder'
+                        ? Icons.alarm_rounded
+                        : Icons.check_circle_outline_rounded,
+                    color: colors.primaryButtonText,
+                  ),
+                  label: Text(
+                    type == 'reminder' ? 'Ver recordatorio' : 'Marcar leída',
+                    style: TextStyle(color: colors.primaryButtonText),
+                  ),
+                  style: TextButton.styleFrom(
+                    backgroundColor: colors.primaryButton,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  onPressed: () async {
+                    await NotificationsService.markAppNotificationAsRead(doc.id);
+
+                    if (!mounted) return;
+
+                    if (type == 'reminder') {
+                      await Navigator.pushNamed(context, '/reminders');
+                    }
+
+                    await _loadAll();
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -350,6 +601,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       barrierDismissible: false,
                       builder: (_) {
                         final dialogColors = context.appColors;
+
                         return AlertDialog(
                           backgroundColor: dialogColors.cardBackground,
                           shape: RoundedRectangleBorder(
@@ -393,6 +645,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                 final url =
                                     'https://www.google.com/maps?q=$lat,$lng';
                                 final uri = Uri.parse(url);
+
                                 if (await canLaunchUrl(uri)) {
                                   await launchUrl(
                                     uri,
@@ -455,13 +708,21 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   Widget _buildMemoryCard(PendingNotificationRequest n) {
     final colors = context.appColors;
-    final selected = _selectedIds.contains(n.id);
-    final title =
-        (n.title?.isNotEmpty ?? false) ? n.title! : 'Recordatorio de recuerdo';
+    final key = _pendingKey(n.id);
+    final selected = _selectedKeys.contains(key);
+
+    final isReminder = (n.payload ?? '').startsWith('reminder/');
+
+    final title = isReminder
+        ? 'Recordatorio'
+        : ((n.title?.isNotEmpty ?? false)
+            ? n.title!
+            : 'Recordatorio de recuerdo');
+
     final body = (n.body?.isNotEmpty ?? false) ? n.body! : 'Sin descripción';
 
     return GestureDetector(
-      onTap: _selectMode ? () => _toggleSelect(n.id) : null,
+      onTap: _selectMode ? () => _toggleSelect(key) : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.only(bottom: 14),
@@ -496,10 +757,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     activeColor: colors.secondaryButton,
                     checkColor: colors.secondaryButtonText,
                     side: BorderSide(color: colors.border),
-                    onChanged: (_) => _toggleSelect(n.id),
+                    onChanged: (_) => _toggleSelect(key),
                   ),
                 Icon(
-                  Icons.notifications_active_rounded,
+                  isReminder
+                      ? Icons.alarm_rounded
+                      : Icons.notifications_active_rounded,
                   color: colors.secondaryButton,
                 ),
                 const SizedBox(width: 8),
@@ -527,9 +790,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                icon: Icon(Icons.photo_rounded, color: colors.primaryButtonText),
+                icon: Icon(
+                  isReminder ? Icons.alarm_rounded : Icons.photo_rounded,
+                  color: colors.primaryButtonText,
+                ),
                 label: Text(
-                  'Ver recuerdo',
+                  isReminder ? 'Ver alarma' : 'Ver recuerdo',
                   style: TextStyle(color: colors.primaryButtonText),
                 ),
                 style: TextButton.styleFrom(
@@ -538,7 +804,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
-                onPressed: () => _showTrainMemoryDialog(context, n),
+                onPressed: () {
+                  if (isReminder) {
+                    Navigator.pushNamed(context, '/reminders');
+                  } else {
+                    _showTrainMemoryDialog(context, n);
+                  }
+                },
               ),
             ),
           ],
@@ -557,6 +829,7 @@ class _TrainGraphicCartoon extends StatelessWidget {
         builder: (_, __) {
           final colors = context.appColors;
           final a = spin.value * math.pi * 4;
+
           return Positioned(
             left: l,
             bottom: b,
@@ -751,6 +1024,7 @@ String _formatMemoryDate(dynamic rawDate) {
     parsed = rawDate;
   } else if (rawDate is String) {
     final value = rawDate.trim();
+
     if (value.isEmpty) return 'Sin fecha';
 
     parsed = DateTime.tryParse(value);
@@ -792,11 +1066,13 @@ class _TrainMemoryDialogState extends State<TrainMemoryDialog>
   late final AnimationController _leave;
   late final Animation<Offset> _trainIn;
   late final Animation<Offset> _trainOut;
+
   bool _closing = false;
 
   @override
   void initState() {
     super.initState();
+
     _intro = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -815,12 +1091,22 @@ class _TrainMemoryDialogState extends State<TrainMemoryDialog>
     _trainIn = Tween<Offset>(
       begin: const Offset(1.2, 0),
       end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _intro, curve: Curves.easeOutCubic));
+    ).animate(
+      CurvedAnimation(
+        parent: _intro,
+        curve: Curves.easeOutCubic,
+      ),
+    );
 
     _trainOut = Tween<Offset>(
       begin: Offset.zero,
       end: const Offset(-1.3, 0),
-    ).animate(CurvedAnimation(parent: _leave, curve: Curves.easeInOutCubic));
+    ).animate(
+      CurvedAnimation(
+        parent: _leave,
+        curve: Curves.easeInOutCubic,
+      ),
+    );
   }
 
   @override
@@ -833,10 +1119,16 @@ class _TrainMemoryDialogState extends State<TrainMemoryDialog>
 
   Future<void> _closeDialog() async {
     if (_closing) return;
+
     setState(() => _closing = true);
+
     await _leave.forward();
+
     _smoke.stop();
-    if (mounted) Navigator.of(context).pop();
+
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   @override
@@ -959,6 +1251,7 @@ class _TrainMemoryDialogState extends State<TrainMemoryDialog>
 
 class _TrackPainter extends CustomPainter {
   final AppColors colors;
+
   const _TrackPainter(this.colors);
 
   @override
@@ -1004,7 +1297,7 @@ class _SmokeLoop extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (_, __) {
-        double t = (controller.value + phase) % 1.0;
+        final t = (controller.value + phase) % 1.0;
         final dy = -32 * t;
         final s = 0.7 + 0.7 * t;
         final o = (t < 0.15) ? (t / 0.15) : (1.0 - t);
@@ -1026,11 +1319,13 @@ class _SmokeLoop extends StatelessWidget {
 
 class _SmokePuff extends StatelessWidget {
   final double size;
+
   const _SmokePuff({required this.size});
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+
     return Container(
       width: size,
       height: size,
@@ -1069,7 +1364,10 @@ class _MemoryCardWhiteBorder extends StatelessWidget {
       shadowColor: colors.primaryButton.withValues(alpha: 0.20),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: colors.primaryButton, width: 1.4),
+        side: BorderSide(
+          color: colors.primaryButton,
+          width: 1.4,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1115,7 +1413,10 @@ class _MemoryCardWhiteBorder extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 6,
+              ),
               decoration: BoxDecoration(
                 color: colors.primaryButton.withValues(alpha: 0.10),
                 border: Border.all(
@@ -1124,7 +1425,7 @@ class _MemoryCardWhiteBorder extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
-                '¿Lo recuerdad?',
+                '¿Lo recuerdas?',
                 style: TextStyle(
                   color: colors.textPrimary,
                   fontSize: 12.5,
@@ -1280,8 +1581,3 @@ class _EmptyState extends StatelessWidget {
     );
   }
 }
-
-
-
-
-

@@ -19,7 +19,9 @@ import 'package:whoami_app/src/features/notifications/data/notifications_service
 
 class HomeCaregiverPage extends StatefulWidget {
   const HomeCaregiverPage({super.key, this.displayName});
+
   static const route = '/home/caregiver';
+
   final String? displayName;
 
   @override
@@ -27,13 +29,12 @@ class HomeCaregiverPage extends StatefulWidget {
 }
 
 class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
-  int _notifCount = 0;
-  bool _loadingNotif = true;
   String? _lastAlertId;
 
   @override
   void initState() {
     super.initState();
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _initializeHome();
       _listenForEmergencyAlerts();
@@ -43,13 +44,14 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
   Future<void> _initializeHome() async {
     try {
       await NotificationsService.ensureInitialized();
+
       final uid = FirebaseAuth.instance.currentUser?.uid;
+
       if (uid != null) {
         await MemoriesScheduler.scheduleAllForUser(uid);
       }
-      await _loadNotifCount();
     } catch (e) {
-      debugPrint('⚠️ Error en inicialización del HomeCaregiver: $e');
+      debugPrint('Error en inicialización del HomeCaregiver: $e');
     }
   }
 
@@ -61,20 +63,20 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
           .update({'active': false});
 
       final pending = await NotificationsService.pendingNotificationRequests();
+
       for (final item in pending) {
         if (item.payload == 'emergency') {
           await NotificationsService.cancel(item.id);
         }
       }
-
-      await _loadNotifCount();
     } catch (e) {
-      debugPrint("⚠️ Error resolviendo emergencia: $e");
+      debugPrint('Error resolviendo emergencia: $e');
     }
   }
 
   void _listenForEmergencyAlerts() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
+
     if (uid == null) return;
 
     final emergenciesRef = FirebaseFirestore.instance
@@ -83,220 +85,234 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
         .where('active', isEqualTo: true)
         .orderBy('timestamp', descending: true);
 
-    emergenciesRef.snapshots(includeMetadataChanges: true).listen((snapshot) {
-      if (snapshot.docs.isEmpty) return;
+    emergenciesRef.snapshots(includeMetadataChanges: true).listen(
+      (snapshot) {
+        if (snapshot.docs.isEmpty) return;
 
-      for (final doc in snapshot.docs) {
-        final alertId = doc.id;
+        for (final doc in snapshot.docs) {
+          final alertId = doc.id;
 
-        if (_lastAlertId == alertId) continue;
-        _lastAlertId = alertId;
+          if (_lastAlertId == alertId) continue;
 
-        final data = doc.data();
-        final consultantId = data['consultantId'] ?? '';
-        final consultantName = data['consultantName'] ?? 'Consultante';
-        final lat = data['lat'];
-        final lng = data['lng'];
-        final title = data['title'] ?? '🚨 Emergencia detectada';
-        final body = data['body'] ?? '$consultantName necesita ayuda.';
+          _lastAlertId = alertId;
 
-        if (lat == null || lng == null) continue;
+          final data = doc.data();
+          final consultantId = data['consultantId'] ?? '';
+          final consultantName = data['consultantName'] ?? 'Consultante';
+          final lat = data['lat'];
+          final lng = data['lng'];
+          final title = data['title'] ?? 'Emergencia detectada';
+          final body = data['body'] ?? '$consultantName necesita ayuda.';
 
-        debugPrint('🆘 Emergencia recibida en tiempo real para cuidador $uid');
+          if (lat == null || lng == null) continue;
 
-        if (!kIsWeb) {
-          NotificationsService.showInstant(title: title, body: body);
-          Vibration.vibrate(duration: 1500, amplitude: 255);
-        }
+          debugPrint('Emergencia recibida en tiempo real para cuidador $uid');
 
-        if (!mounted) return;
+          if (!kIsWeb) {
+            NotificationsService.showInstant(
+              title: title,
+              body: body,
+            );
 
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final colors = context.appColors;
+            Vibration.vibrate(
+              duration: 1500,
+              amplitude: 255,
+            );
+          }
 
-          final dialogBgTop = context.isDark
-              ? const Color(0xFF3B2024)
-              : const Color(0xFFFFDDDD);
-          final dialogBgBottom = context.isDark
-              ? const Color(0xFF24161A)
-              : const Color(0xFFFFF1F1);
-          final shadowColor = context.isDark
-              ? Colors.black.withValues(alpha: 0.45)
-              : Colors.black.withValues(alpha: 0.20);
-          final dangerAccent = context.isDark
-              ? const Color(0xFFFF8E8E)
-              : Colors.red;
+          if (!mounted) return;
 
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) => Dialog(
-              backgroundColor: Colors.transparent,
-              insetPadding:
-                  const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(22),
-                  gradient: LinearGradient(
-                    colors: [dialogBgTop, dialogBgBottom],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: shadowColor,
-                      blurRadius: 22,
-                      offset: const Offset(0, 8),
-                    )
-                  ],
-                  border: Border.all(
-                    color: context.isDark
-                        ? const Color(0xFF6B2B33)
-                        : const Color(0xFFFFC2C2),
-                  ),
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final colors = context.appColors;
+
+            final dialogBgTop = context.isDark
+                ? const Color(0xFF3B2024)
+                : const Color(0xFFFFDDDD);
+
+            final dialogBgBottom = context.isDark
+                ? const Color(0xFF24161A)
+                : const Color(0xFFFFF1F1);
+
+            final shadowColor = context.isDark
+                ? Colors.black.withValues(alpha: 0.45)
+                : Colors.black.withValues(alpha: 0.20);
+
+            final dangerAccent = context.isDark
+                ? const Color(0xFFFF8E8E)
+                : Colors.red;
+
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 24,
                 ),
-                padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: dangerAccent.withValues(alpha: 0.18),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.warning_rounded,
-                            color: dangerAccent,
-                            size: 32,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Emergencia de $consultantName',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: colors.textPrimary,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(22),
+                    gradient: LinearGradient(
+                      colors: [
+                        dialogBgTop,
+                        dialogBgBottom,
                       ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
                     ),
-                    const SizedBox(height: 14),
-                    Text(
-                      body,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: colors.textPrimary,
-                        fontSize: 16,
-                        height: 1.3,
-                        fontWeight: FontWeight.w500,
+                    boxShadow: [
+                      BoxShadow(
+                        color: shadowColor,
+                        blurRadius: 22,
+                        offset: const Offset(0, 8),
                       ),
+                    ],
+                    border: Border.all(
+                      color: context.isDark
+                          ? const Color(0xFF6B2B33)
+                          : const Color(0xFFFFC2C2),
                     ),
-                    const SizedBox(height: 18),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: 240,
-                        child: EmergencyMapPage(
-                          consultantId: consultantId,
-                          lat: lat,
-                          lng: lng,
-                          isDialog: true,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.navigation_rounded,
-                            color: Colors.white),
-                        label: const Text(
-                          "Abrir en Google Maps",
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                            color: Colors.white,
+                  ),
+                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: dangerAccent.withValues(alpha: 0.18),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.warning_rounded,
+                              color: dangerAccent,
+                              size: 32,
+                            ),
                           ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: context.isDark
-                              ? const Color(0xFFC35B5B)
-                              : Colors.redAccent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Emergencia de $consultantName',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                color: colors.textPrimary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                          elevation: 4,
-                        ),
-                        onPressed: () async {
-                          final url = 'https://www.google.com/maps?q=$lat,$lng';
-                          final uri = Uri.parse(url);
-
-                          if (await canLaunchUrl(uri)) {
-                            await launchUrl(uri,
-                                mode: LaunchMode.externalApplication);
-                          }
-
-                          if (context.mounted) Navigator.pop(context);
-                          await _resolveEmergency(alertId);
-                        },
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        await _resolveEmergency(alertId);
-                      },
-                      child: Text(
-                        "Cerrar",
+                      const SizedBox(height: 14),
+                      Text(
+                        body,
+                        textAlign: TextAlign.center,
                         style: TextStyle(
                           color: colors.textPrimary,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.underline,
+                          fontSize: 16,
+                          height: 1.3,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 18),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: 240,
+                          child: EmergencyMapPage(
+                            consultantId: consultantId,
+                            lat: lat,
+                            lng: lng,
+                            isDialog: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton.icon(
+                          icon: const Icon(
+                            Icons.navigation_rounded,
+                            color: Colors.white,
+                          ),
+                          label: const Text(
+                            'Abrir en Google Maps',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              color: Colors.white,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: context.isDark
+                                ? const Color(0xFFC35B5B)
+                                : Colors.redAccent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            elevation: 4,
+                          ),
+                          onPressed: () async {
+                            final url =
+                                'https://www.google.com/maps?q=$lat,$lng';
+
+                            final uri = Uri.parse(url);
+
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(
+                                uri,
+                                mode: LaunchMode.externalApplication,
+                              );
+                            }
+
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                            }
+
+                            await _resolveEmergency(alertId);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await _resolveEmergency(alertId);
+                        },
+                        child: Text(
+                          'Cerrar',
+                          style: TextStyle(
+                            color: colors.textPrimary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          );
-        });
-      }
-    }, onError: (error) {
-      debugPrint('⚠️ Error escuchando emergencias: $error');
-    });
-  }
-
-  Future<void> _loadNotifCount() async {
-    try {
-      final pending =
-          await NotificationsService.plugin.pendingNotificationRequests();
-      if (!mounted) return;
-      setState(() {
-        _notifCount = pending.length;
-        _loadingNotif = false;
-      });
-    } catch (e) {
-      debugPrint('⚠️ Error al cargar notificaciones pendientes: $e');
-      if (!mounted) return;
-      setState(() => _loadingNotif = false);
-    }
+            );
+          });
+        }
+      },
+      onError: (error) {
+        debugPrint('Error escuchando emergencias: $error');
+      },
+    );
   }
 
   Future<void> _openNotifications() async {
-    await Navigator.pushNamed(context, NotificationsPage.route);
-    await _loadNotifCount();
+    await Navigator.pushNamed(
+      context,
+      NotificationsPage.route,
+    );
   }
 
   @override
@@ -323,7 +339,9 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                         builder: (context, authSnap) {
                           final user =
                               authSnap.data ?? FirebaseAuth.instance.currentUser;
+
                           if (user == null) return const SizedBox();
+
                           final uid = user.uid;
 
                           return StreamBuilder<
@@ -334,26 +352,38 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                                 .snapshots(),
                             builder: (context, docSnap) {
                               String name = 'Cuidador';
+
                               if (docSnap.hasData &&
                                   docSnap.data!.data() != null) {
                                 final data = docSnap.data!.data()!;
+
                                 final first =
-                                    (data['firstName'] as String?)?.trim() ?? '';
+                                    (data['firstName'] as String?)?.trim() ??
+                                        '';
+
                                 final last =
                                     (data['lastName'] as String?)?.trim() ?? '';
+
                                 final fsName = [first, last]
-                                    .where((e) => e.isNotEmpty)
+                                    .where((item) => item.isNotEmpty)
                                     .join(' ');
-                                if (fsName.isNotEmpty) name = fsName;
+
+                                if (fsName.isNotEmpty) {
+                                  name = fsName;
+                                }
                               }
 
                               if (name == 'Cuidador') {
                                 final dn = (user.displayName ?? '').trim();
-                                if (dn.isNotEmpty) name = dn;
+
+                                if (dn.isNotEmpty) {
+                                  name = dn;
+                                }
                               }
 
                               if (name == 'Cuidador') {
                                 final mail = user.email ?? '';
+
                                 if (mail.contains('@')) {
                                   name = mail.split('@').first;
                                 }
@@ -385,48 +415,67 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                       ),
                       const SizedBox(height: 20),
                       _PillButton(
-                        color: context.isDark
-                            ? colors.secondaryButton
-                            : kPurple,
+                        color:
+                            context.isDark ? colors.secondaryButton : kPurple,
                         icon: Icons.people_outline,
                         text: 'Pacientes',
-                        onTap: () =>
-                            Navigator.pushNamed(context, PatientsListPage.route),
+                        onTap: () {
+                          Navigator.pushNamed(
+                            context,
+                            PatientsListPage.route,
+                          );
+                        },
                       ),
                       _PillButton(
-                        color: context.isDark
-                            ? colors.secondaryButton
-                            : kPurple,
+                        color:
+                            context.isDark ? colors.secondaryButton : kPurple,
                         icon: Icons.menu_book_outlined,
                         text: 'Guías',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const QuickGuidesPage()),
-                        ),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const QuickGuidesPage(),
+                            ),
+                          );
+                        },
                       ),
                       _PillButton(
-                        color: context.isDark
-                            ? colors.secondaryButton
-                            : kPurple,
+                        color:
+                            context.isDark ? colors.secondaryButton : kPurple,
                         icon: Icons.event_note_outlined,
                         text: 'Recuerdos',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const CalendarPage()),
-                        ),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const CalendarPage(),
+                            ),
+                          );
+                        },
                       ),
                       _PillButton(
-                        color: context.isDark
-                            ? colors.secondaryButton
-                            : kPurple,
+                        color:
+                            context.isDark ? colors.secondaryButton : kPurple,
+                        icon: Icons.alarm_rounded,
+                        text: 'Recordatorios',
+                        onTap: () {
+                          Navigator.pushNamed(context, '/reminders');
+                        },
+                      ),
+                      _PillButton(
+                        color:
+                            context.isDark ? colors.secondaryButton : kPurple,
                         icon: Icons.chat_bubble_outline,
                         text: 'Asistente',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const AssistantPage()),
-                        ),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const AssistantPage(),
+                            ),
+                          );
+                        },
                       ),
                       const SizedBox(height: 24),
                     ],
@@ -441,9 +490,14 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
               child: Padding(
                 padding: const EdgeInsets.only(left: 8, top: 4),
                 child: IconButton(
-                  icon:
-                      Icon(Icons.settings, color: colors.textPrimary, size: 28),
-                  onPressed: () => Navigator.pushNamed(context, '/settings'),
+                  icon: Icon(
+                    Icons.settings,
+                    color: colors.textPrimary,
+                    size: 28,
+                  ),
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/settings');
+                  },
                   tooltip: 'Ajustes',
                 ),
               ),
@@ -454,10 +508,22 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
               alignment: Alignment.topRight,
               child: Padding(
                 padding: const EdgeInsets.only(right: 8, top: 4),
-                child: _NotificationBell(
-                  count: _notifCount,
-                  loading: _loadingNotif,
-                  onTap: _openNotifications,
+                child: StreamBuilder<int>(
+                  stream:
+                      NotificationsService.watchUnreadAppNotificationCount(),
+                  builder: (context, snapshot) {
+                    final loading =
+                        snapshot.connectionState == ConnectionState.waiting &&
+                            !snapshot.hasData;
+
+                    final count = snapshot.data ?? 0;
+
+                    return _NotificationBell(
+                      count: count,
+                      loading: loading,
+                      onTap: _openNotifications,
+                    );
+                  },
                 ),
               ),
             ),
@@ -491,8 +557,11 @@ class _NotificationBell extends StatelessWidget {
       children: [
         IconButton(
           onPressed: loading ? null : onTap,
-          icon: Icon(Icons.notifications_none_rounded,
-              color: colors.textPrimary, size: 28),
+          icon: Icon(
+            Icons.notifications_none_rounded,
+            color: colors.textPrimary,
+            size: 28,
+          ),
           tooltip: 'Notificaciones',
         ),
         if (loading)
@@ -513,14 +582,18 @@ class _NotificationBell extends StatelessWidget {
             right: 6,
             top: 6,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 2,
+              ),
               decoration: BoxDecoration(
-                color: context.isDark
-                    ? const Color(0xFFC35B5B)
-                    : Colors.red,
+                color: context.isDark ? const Color(0xFFC35B5B) : Colors.red,
                 borderRadius: BorderRadius.circular(12),
               ),
-              constraints: const BoxConstraints(minWidth: 20, minHeight: 18),
+              constraints: const BoxConstraints(
+                minWidth: 20,
+                minHeight: 18,
+              ),
               alignment: Alignment.center,
               child: Text(
                 display,
@@ -571,7 +644,11 @@ class _PillButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 24, color: buttonTextColor),
+              Icon(
+                icon,
+                size: 24,
+                color: buttonTextColor,
+              ),
               const SizedBox(width: 12),
               Text(
                 text,
@@ -588,8 +665,3 @@ class _PillButton extends StatelessWidget {
     );
   }
 }
-
-
-
-
-

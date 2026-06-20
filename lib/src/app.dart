@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:provider/provider.dart';
 
 import 'package:whoami_app/src/core/accessibility/accessibility_controller.dart';
 import 'package:whoami_app/src/core/accessibility/accessibility_service.dart';
@@ -29,8 +30,13 @@ import 'package:whoami_app/src/features/patients/presentation/pages/patients_lis
 import 'package:whoami_app/src/features/games/presentation/pages/game_page.dart';
 import 'package:whoami_app/src/features/games/presentation/pages/memorama_page.dart';
 
+import 'package:whoami_app/src/features/notifications/data/notifications_service.dart';
 import 'package:whoami_app/src/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
+
+import 'package:whoami_app/src/features/reminders/presentation/pages/reminders_page.dart';
+import 'package:whoami_app/src/features/reminders/presentation/pages/reminder_alarm_page.dart';
+import 'package:whoami_app/src/features/reminders/presentation/providers/reminder_provider.dart';
 
 class WhoAmIApp extends StatefulWidget {
   const WhoAmIApp({super.key});
@@ -60,7 +66,7 @@ class _WhoAmIAppState extends State<WhoAmIApp> {
     try {
       await a11y.init();
     } catch (_) {
-      // Evita que la app se caiga si hay error leyendo preferencias.
+      // Evita que la app se cierre si hay error leyendo preferencias.
     }
   }
 
@@ -73,92 +79,110 @@ class _WhoAmIAppState extends State<WhoAmIApp> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: a11y,
-      builder: (context, _) {
-        final s = a11y.settings;
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ReminderProvider>(
+          create: (_) => ReminderProvider(),
+        ),
+      ],
+      child: AnimatedBuilder(
+        animation: a11y,
+        builder: (context, _) {
+          final s = a11y.settings;
 
-        const seed = kBlue;
+          const seed = kBlue;
 
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'WhoAmI?',
-          theme: buildAppTheme(
-            seedColor: seed,
-            darkMode: false,
-            simplified: s.simplified,
-          ),
-          darkTheme: buildAppTheme(
-            seedColor: seed,
-            darkMode: true,
-            simplified: s.simplified,
-          ),
-          themeMode: s.darkMode ? ThemeMode.dark : ThemeMode.light,
-          supportedLocales: const [
-            Locale('es'),
-            Locale('es', 'MX'),
-            Locale('en'),
-          ],
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          locale: const Locale('es', 'MX'),
-          builder: (context, child) {
-            final mq = MediaQuery.of(context);
+          return MaterialApp(
+            navigatorKey: NotificationsService.navigatorKey,
+            debugShowCheckedModeBanner: false,
+            title: 'WhoAmI?',
+            theme: buildAppTheme(
+              seedColor: seed,
+              darkMode: false,
+              simplified: s.simplified,
+            ),
+            darkTheme: buildAppTheme(
+              seedColor: seed,
+              darkMode: true,
+              simplified: s.simplified,
+            ),
+            themeMode: s.darkMode ? ThemeMode.dark : ThemeMode.light,
+            supportedLocales: const [
+              Locale('es'),
+              Locale('es', 'MX'),
+              Locale('en'),
+            ],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            locale: const Locale('es', 'MX'),
+            builder: (context, child) {
+              final mq = MediaQuery.of(context);
 
-            return MediaQuery(
-              data: mq.copyWith(
-                textScaler: TextScaler.linear(s.textScale),
-              ),
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-                child: child ?? const SizedBox.shrink(),
-              ),
-            );
-          },
-          initialRoute: '/',
-          routes: {
-            '/': (_) => const AuthGate(),
-
-            '/auth/choice': (_) => const ChoiceStart(),
-            '/login': (_) => const LoginPage(),
-
-            '/register/name': (_) => const RegisterNamePage(),
-            '/register/password': (_) => const RegisterPasswordPage(),
-            '/register/role': (_) => const RegisterRolePage(),
-
-            '/home/caregiver': (ctx) {
-              final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
-              return HomeCaregiverPage(
-                displayName: args?['name'] as String?,
+              return MediaQuery(
+                data: mq.copyWith(
+                  textScaler: TextScaler.linear(s.textScale),
+                ),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                  child: child ?? const SizedBox.shrink(),
+                ),
               );
             },
+            initialRoute: '/',
+            routes: {
+              '/': (_) => const AuthGate(),
 
-            '/home/consultant': (ctx) {
-              final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
-              return HomeConsultantPage(
-                displayName: args?['name'] as String?,
-              );
+              '/auth/choice': (_) => const ChoiceStart(),
+              '/login': (_) => const LoginPage(),
+
+              '/register/name': (_) => const RegisterNamePage(),
+              '/register/password': (_) => const RegisterPasswordPage(),
+              '/register/role': (_) => const RegisterRolePage(),
+
+              '/home/caregiver': (ctx) {
+                final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
+                return HomeCaregiverPage(
+                  displayName: args?['name'] as String?,
+                );
+              },
+
+              '/home/consultant': (ctx) {
+                final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
+                return HomeConsultantPage(
+                  displayName: args?['name'] as String?,
+                );
+              },
+
+              '/settings': (_) => SettingsPage(a11y: a11y),
+              '/settings/edit-profile': (_) => const EditProfilePage(),
+
+              PatientsListPage.route: (_) => const PatientsListPage(),
+              RegisterPatientPage.route: (_) => const RegisterPatientPage(),
+
+              GamesPage.route: (_) => const GamesPage(),
+              MemoramaPage.route: (_) => const MemoramaPage(),
+
+              NotificationsPage.route: (_) => const NotificationsPage(),
+              AssistantPage.route: (_) => const AssistantPage(),
+
+              '/reminders': (_) => const RemindersPage(),
+
+              ReminderAlarmPage.route: (ctx) {
+                final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
+
+                return ReminderAlarmPage(
+                  title: args?['title'] as String? ?? 'Recordatorio',
+                  description: args?['description'] as String?,
+                );
+              },
             },
-
-            '/settings': (_) => SettingsPage(a11y: a11y),
-            '/settings/edit-profile': (_) => const EditProfilePage(),
-
-            PatientsListPage.route: (_) => const PatientsListPage(),
-            RegisterPatientPage.route: (_) => const RegisterPatientPage(),
-
-            GamesPage.route: (_) => const GamesPage(),
-            MemoramaPage.route: (_) => const MemoramaPage(),
-
-            NotificationsPage.route: (_) => const NotificationsPage(),
-            AssistantPage.route: (_) => const AssistantPage(),
-          },
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
-
