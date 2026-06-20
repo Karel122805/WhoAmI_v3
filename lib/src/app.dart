@@ -34,9 +34,15 @@ import 'package:whoami_app/src/features/notifications/data/notifications_service
 import 'package:whoami_app/src/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
 
+<<<<<<< HEAD
 import 'package:whoami_app/src/features/reminders/presentation/pages/reminders_page.dart';
 import 'package:whoami_app/src/features/reminders/presentation/pages/reminder_alarm_page.dart';
 import 'package:whoami_app/src/features/reminders/presentation/providers/reminder_provider.dart';
+=======
+import 'package:whoami_app/src/features/recommendations/presentation/recommendations_screen.dart';
+import 'package:whoami_app/src/features/support_contacts/presentation/support_contacts_screen.dart';
+import 'package:whoami_app/src/features/emergency/presentation/pages/panic_button_page.dart';
+>>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
 
 class WhoAmIApp extends StatefulWidget {
   const WhoAmIApp({super.key});
@@ -45,33 +51,199 @@ class WhoAmIApp extends StatefulWidget {
   State<WhoAmIApp> createState() => _WhoAmIAppState();
 }
 
-class _WhoAmIAppState extends State<WhoAmIApp> {
+class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
   late final AccessibilityController a11y;
   StreamSubscription<User?>? _authSub;
+
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
+  // HU-15 temporalmente ajustado para evitar bloqueos mientras probamos HU-05.
+  static const Duration _progressiveReminderStep = Duration(hours: 24);
+  static const Duration _checkInterval = Duration(minutes: 30);
+
+  Timer? _usageTimer;
+  DateTime? _usageStartedAt;
+  Duration _nextReminderAt = _progressiveReminderStep;
+  bool _breakDialogVisible = false;
 
   @override
   void initState() {
     super.initState();
 
-    a11y = AccessibilityController(AccessibilityService());
+    WidgetsBinding.instance.addObserver(this);
 
+    a11y = AccessibilityController(AccessibilityService());
     unawaited(_loadAccessibility());
 
-    _authSub = FirebaseAuth.instance.authStateChanges().listen((_) {
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
       unawaited(_loadAccessibility());
+
+      if (user == null) {
+        _stopUsageControl();
+      } else {
+        _startUsageControl();
+      }
     });
+
+    if (FirebaseAuth.instance.currentUser != null) {
+      _startUsageControl();
+    }
   }
 
   Future<void> _loadAccessibility() async {
     try {
       await a11y.init();
+<<<<<<< HEAD
     } catch (_) {
       // Evita que la app se cierre si hay error leyendo preferencias.
+=======
+    } catch (_) {}
+  }
+
+  void _startUsageControl() {
+    _usageStartedAt = DateTime.now();
+    _nextReminderAt = _progressiveReminderStep;
+
+    _usageTimer?.cancel();
+    _usageTimer = Timer.periodic(_checkInterval, (_) {
+      _checkProlongedUse();
+    });
+  }
+
+  void _stopUsageControl() {
+    _usageTimer?.cancel();
+    _usageTimer = null;
+    _usageStartedAt = null;
+    _nextReminderAt = _progressiveReminderStep;
+    _breakDialogVisible = false;
+  }
+
+  void _resetUsageControl() {
+    _usageStartedAt = DateTime.now();
+    _nextReminderAt = _progressiveReminderStep;
+  }
+
+  void _checkProlongedUse() {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) return;
+    if (_usageStartedAt == null) return;
+    if (_breakDialogVisible) return;
+
+    final elapsed = DateTime.now().difference(_usageStartedAt!);
+
+    if (elapsed >= _nextReminderAt) {
+      final currentElapsed = elapsed;
+      _nextReminderAt += _progressiveReminderStep;
+      unawaited(_showBreakSuggestionDialog(currentElapsed));
+    }
+  }
+
+  Future<void> _showBreakSuggestionDialog(Duration elapsed) async {
+    final context = _navigatorKey.currentContext;
+
+    if (context == null) return;
+    if (!mounted) return;
+
+    _breakDialogVisible = true;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        final colorScheme = theme.colorScheme;
+
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.self_improvement_rounded,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text('Descanso recomendado'),
+              ),
+            ],
+          ),
+          content: Text(
+            'Has estado usando la aplicación durante ${_formatUsageTime(elapsed)}.\n\n'
+            'Te recomendamos tomar un pequeño descanso, estirarte o tomar agua.\n\n'
+            'Puedes continuar cuando te sientas listo.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+              child: const Text('Seguir usando'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                _resetUsageControl();
+                Navigator.of(dialogContext).pop();
+              },
+              icon: const Icon(Icons.timer_outlined),
+              label: const Text('Tomar descanso'),
+            ),
+          ],
+        );
+      },
+    );
+
+    _breakDialogVisible = false;
+  }
+
+  String _formatUsageTime(Duration duration) {
+    final totalSeconds = duration.inSeconds;
+    final totalMinutes = duration.inMinutes;
+
+    if (totalMinutes <= 0) {
+      return totalSeconds == 1 ? '1 segundo' : '$totalSeconds segundos';
+    }
+
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+
+    if (hours == 0) {
+      return minutes == 1 ? '1 minuto' : '$minutes minutos';
+    }
+
+    if (minutes == 0) {
+      return hours == 1 ? '1 hora' : '$hours horas';
+    }
+
+    final hourText = hours == 1 ? '1 hora' : '$hours horas';
+    final minuteText = minutes == 1 ? '1 minuto' : '$minutes minutos';
+
+    return '$hourText y $minuteText';
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _resetUsageControl();
+    }
+
+    if (state == AppLifecycleState.resumed &&
+        FirebaseAuth.instance.currentUser != null) {
+      _resetUsageControl();
+>>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _usageTimer?.cancel();
     _authSub?.cancel();
     a11y.dispose();
     super.dispose();
@@ -92,6 +264,7 @@ class _WhoAmIAppState extends State<WhoAmIApp> {
 
           const seed = kBlue;
 
+<<<<<<< HEAD
           return MaterialApp(
             navigatorKey: NotificationsService.navigatorKey,
             debugShowCheckedModeBanner: false,
@@ -130,12 +303,71 @@ class _WhoAmIAppState extends State<WhoAmIApp> {
                   onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
                   child: child ?? const SizedBox.shrink(),
                 ),
+=======
+        return MaterialApp(
+          navigatorKey: _navigatorKey,
+          debugShowCheckedModeBanner: false,
+          title: 'WhoAmI?',
+          theme: buildAppTheme(
+            seedColor: seed,
+            darkMode: false,
+            simplified: s.simplified,
+          ),
+          darkTheme: buildAppTheme(
+            seedColor: seed,
+            darkMode: true,
+            simplified: s.simplified,
+          ),
+          themeMode: s.darkMode ? ThemeMode.dark : ThemeMode.light,
+          supportedLocales: const [
+            Locale('es'),
+            Locale('es', 'MX'),
+            Locale('en'),
+          ],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          locale: const Locale('es', 'MX'),
+          builder: (context, child) {
+            final mq = MediaQuery.of(context);
+
+            return MediaQuery(
+              data: mq.copyWith(
+                textScaler: TextScaler.linear(s.textScale),
+              ),
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                child: child ?? const SizedBox.shrink(),
+              ),
+            );
+          },
+          initialRoute: '/',
+          routes: {
+            '/': (_) => const AuthGate(),
+
+            '/auth/choice': (_) => const ChoiceStart(),
+            '/login': (_) => const LoginPage(),
+
+            '/register/name': (_) => const RegisterNamePage(),
+            '/register/password': (_) => const RegisterPasswordPage(),
+            '/register/role': (_) => const RegisterRolePage(),
+
+            '/home/caregiver': (ctx) {
+              final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
+
+              return HomeCaregiverPage(
+                displayName: args?['name'] as String?,
+>>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
               );
             },
             initialRoute: '/',
             routes: {
               '/': (_) => const AuthGate(),
 
+<<<<<<< HEAD
               '/auth/choice': (_) => const ChoiceStart(),
               '/login': (_) => const LoginPage(),
 
@@ -183,6 +415,34 @@ class _WhoAmIAppState extends State<WhoAmIApp> {
           );
         },
       ),
+=======
+            '/home/consultant': (ctx) {
+              final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
+
+              return HomeConsultantPage(
+                displayName: args?['name'] as String?,
+              );
+            },
+
+            '/settings': (_) => SettingsPage(a11y: a11y),
+            '/settings/edit-profile': (_) => const EditProfilePage(),
+
+            PatientsListPage.route: (_) => const PatientsListPage(),
+            RegisterPatientPage.route: (_) => const RegisterPatientPage(),
+
+            GamesPage.route: (_) => const GamesPage(),
+            MemoramaPage.route: (_) => const MemoramaPage(),
+
+            NotificationsPage.route: (_) => const NotificationsPage(),
+            AssistantPage.route: (_) => const AssistantPage(),
+
+            '/recommendations': (_) => const RecommendationsScreen(),
+            SupportContactsScreen.route: (_) => const SupportContactsScreen(),
+            PanicButtonPage.route: (_) => const PanicButtonPage(),
+          },
+        );
+      },
+>>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
     );
   }
 }

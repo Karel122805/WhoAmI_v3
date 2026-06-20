@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:math';
+
 import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
 import 'package:whoami_app/src/core/theme/app_theme.dart';
+import 'package:whoami_app/src/features/games/data/memorama_progress_service.dart';
 
 class MemoramaPage extends StatefulWidget {
   const MemoramaPage({super.key});
@@ -14,6 +16,9 @@ class MemoramaPage extends StatefulWidget {
 
 class _MemoramaPageState extends State<MemoramaPage>
     with TickerProviderStateMixin {
+  final MemoramaProgressService _progressService = MemoramaProgressService();
+  final Random _random = Random();
+
   final List<IconData> _icons = const [
     Icons.favorite,
     Icons.star,
@@ -29,21 +34,67 @@ class _MemoramaPageState extends State<MemoramaPage>
     Icons.icecream,
   ];
 
+  final List<Color> _pairColors = const [
+    Color(0xFFE57373),
+    Color(0xFFFFD54F),
+    Color(0xFF81C784),
+    Color(0xFFA1887F),
+    Color(0xFFFF8A65),
+    Color(0xFFBA68C8),
+    Color(0xFF64B5F6),
+    Color(0xFF4DD0E1),
+    Color(0xFFF48FB1),
+    Color(0xFFFFB74D),
+    Color(0xFF90A4AE),
+    Color(0xFFAED581),
+  ];
+
+  final List<String> _startMessages = const [
+    '¡Vamos! Es momento de entrenar tu memoria.',
+    'Concéntrate y disfruta este reto.',
+    'Tú puedes. Cada intento cuenta.',
+    'Comencemos poco a poco.',
+    'Hoy es un buen día para practicar.',
+    'Recuerda: lo importante es intentarlo.',
+  ];
+
+  final List<String> _winTitles = const [
+    '¡Excelente trabajo!',
+    '¡Muy bien! Lo lograste.',
+    '¡Qué buen esfuerzo!',
+    '¡Sigue así!',
+    '¡Lo hiciste muy bien!',
+    '¡Gran avance!',
+  ];
+
+  final List<String> _winMessages = const [
+    'Cada partida ayuda a fortalecer tu memoria.',
+    'Tu esfuerzo es lo más importante.',
+    'Vas progresando muy bien.',
+    'Practicar también es avanzar.',
+    'Tu memoria mejora con cada intento.',
+    'Lo hiciste con calma y dedicación.',
+  ];
+
   late List<int> _cards;
   late List<bool> _revealed;
+  late List<bool> _matched;
+
   int? _firstIndex;
 
   bool _waiting = false;
   bool _started = false;
   bool _paused = false;
+  bool _loadingLevel = true;
 
   int _moves = 0;
   int _seconds = 0;
   int _score = 0;
-  Timer? _timer;
-  String? _level;
 
-  final Map<String, int> _starsPerLevel = {};
+  int _unlockedLevel = 1;
+  int _selectedLevel = 1;
+
+  Timer? _timer;
 
   late final AnimationController _bannerCtrl;
   late final Animation<double> _bannerOpacity;
@@ -83,6 +134,8 @@ class _MemoramaPageState extends State<MemoramaPage>
     _confettiCtrl = ConfettiController(
       duration: const Duration(seconds: 4),
     );
+
+    _loadUnlockedLevel();
   }
 
   @override
@@ -91,6 +144,54 @@ class _MemoramaPageState extends State<MemoramaPage>
     _bannerCtrl.dispose();
     _confettiCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUnlockedLevel() async {
+    final level = await _progressService.getUnlockedLevel();
+
+    if (!mounted) return;
+
+    setState(() {
+      _unlockedLevel = level;
+      _selectedLevel = level;
+      _loadingLevel = false;
+    });
+  }
+
+  String get _levelName => 'Nivel $_selectedLevel';
+
+  String _randomText(List<String> messages) {
+    return messages[_random.nextInt(messages.length)];
+  }
+
+  double get _progressValue {
+    return _unlockedLevel / MemoramaProgressService.maxLevel;
+  }
+
+  int get _gridSize {
+    switch (_selectedLevel) {
+      case 2:
+        return 4;
+      case 3:
+        return 4;
+      default:
+        return 3;
+    }
+  }
+
+  int get _pairCount {
+    switch (_selectedLevel) {
+      case 2:
+        return 8;
+      case 3:
+        return 12;
+      default:
+        return 4;
+    }
+  }
+
+  Color _pairColor(int cardValue) {
+    return _pairColors[cardValue % _pairColors.length];
   }
 
   Future<void> _confirmExitGame() async {
@@ -105,18 +206,16 @@ class _MemoramaPageState extends State<MemoramaPage>
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: colors.cardBackground,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
-          '¿Estás seguro que quieres salir?',
+          '¿Quieres salir del juego?',
           style: TextStyle(
             color: colors.textPrimary,
             fontWeight: FontWeight.bold,
           ),
         ),
         content: Text(
-          'Perderás tu partida actual.',
+          'Tu partida actual se cerrará, pero podrás intentarlo nuevamente cuando quieras.',
           style: TextStyle(color: colors.textPrimary),
         ),
         actionsAlignment: MainAxisAlignment.center,
@@ -127,7 +226,7 @@ class _MemoramaPageState extends State<MemoramaPage>
               backgroundColor: colors.primaryButton,
               foregroundColor: colors.primaryButtonText,
             ),
-            child: const Text('No, continuar jugando'),
+            child: const Text('Continuar jugando'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
@@ -135,7 +234,7 @@ class _MemoramaPageState extends State<MemoramaPage>
               backgroundColor: colors.emergency,
               foregroundColor: colors.emergencyText,
             ),
-            child: const Text('Sí, salir'),
+            child: const Text('Salir'),
           ),
         ],
       ),
@@ -157,44 +256,12 @@ class _MemoramaPageState extends State<MemoramaPage>
     );
   }
 
-  int get _gridSize {
-    switch (_level) {
-      case 'Medio':
-        return 4;
-      case 'Difícil':
-        return 6;
-      default:
-        return 3;
-    }
-  }
-
-  int get _pairCount {
-    switch (_level) {
-      case 'Medio':
-        return 8;
-      case 'Difícil':
-        return 12;
-      default:
-        return 4;
-    }
-  }
-
   void _startGame() {
-    if (_level == null) {
-      final colors = context.appColors;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Selecciona un nivel antes de iniciar.'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: colors.textPrimary,
-        ),
-      );
-      return;
-    }
-
     final base = List.generate(_pairCount, (i) => i);
-    _cards = [...base, ...base]..shuffle(Random());
+    _cards = [...base, ...base]..shuffle(_random);
     _revealed = List<bool>.filled(_cards.length, false);
+    _matched = List<bool>.filled(_cards.length, false);
+
     _firstIndex = null;
     _waiting = false;
     _moves = 0;
@@ -203,13 +270,63 @@ class _MemoramaPageState extends State<MemoramaPage>
     _paused = false;
     _started = true;
 
-    _showLevelBanner('Nivel $_level iniciado');
+    _showLevelBanner(_randomText(_startMessages));
     _timer?.cancel();
     _startTimer();
     setState(() {});
   }
 
   void _resetGame() => _startGame();
+
+  Future<void> _resetGameWithEncouragement() async {
+    final colors = context.appColors;
+
+    final retry = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: colors.cardBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: Text(
+          'No pasa nada',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: colors.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          'Puedes intentarlo nuevamente. Cada intento ayuda a ejercitar tu memoria.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: colors.textPrimary,
+            height: 1.35,
+          ),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'Seguir jugando',
+              style: TextStyle(color: colors.textPrimary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              backgroundColor: colors.secondaryButton,
+              foregroundColor: colors.secondaryButtonText,
+            ),
+            child: const Text('Reintentar'),
+          ),
+        ],
+      ),
+    );
+
+    if (retry == true) {
+      _startGame();
+    }
+  }
 
   void _startTimer() {
     _timer?.cancel();
@@ -232,7 +349,13 @@ class _MemoramaPageState extends State<MemoramaPage>
   }
 
   Future<void> _onCardTap(int index) async {
-    if (!_started || _paused || _waiting || _revealed[index]) return;
+    if (!_started ||
+        _paused ||
+        _waiting ||
+        _revealed[index] ||
+        _matched[index]) {
+      return;
+    }
 
     setState(() => _revealed[index] = true);
 
@@ -245,7 +368,8 @@ class _MemoramaPageState extends State<MemoramaPage>
 
     if (_cards[_firstIndex!] != _cards[index]) {
       _waiting = true;
-      await Future.delayed(const Duration(milliseconds: 600));
+
+      await Future.delayed(const Duration(milliseconds: 700));
       if (!mounted) return;
 
       setState(() {
@@ -255,16 +379,24 @@ class _MemoramaPageState extends State<MemoramaPage>
 
       _waiting = false;
     } else {
-      _score++;
+      setState(() {
+        _matched[_firstIndex!] = true;
+        _matched[index] = true;
+        _score++;
+      });
+
+      _showLevelBanner('¡Encontraste una pareja!');
     }
 
     _firstIndex = null;
 
-    if (_revealed.every((r) => r)) {
+    if (_matched.every((r) => r)) {
       _timer?.cancel();
+
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
-      _showWinDialog();
+
+      await _showWinDialog();
     } else {
       if (mounted) setState(() {});
     }
@@ -278,9 +410,7 @@ class _MemoramaPageState extends State<MemoramaPage>
       barrierDismissible: false,
       builder: (_) => AlertDialog(
         backgroundColor: colors.cardBackground,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
           'Juego en pausa',
           style: TextStyle(
@@ -289,9 +419,10 @@ class _MemoramaPageState extends State<MemoramaPage>
           ),
         ),
         content: Text(
-          'Puedes continuar o reiniciar el juego.',
+          'Tómate tu tiempo. Puedes continuar cuando estés listo.',
           style: TextStyle(color: colors.textPrimary),
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () {
@@ -307,159 +438,36 @@ class _MemoramaPageState extends State<MemoramaPage>
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              _resetGame();
-            },
-            style: TextButton.styleFrom(
-              backgroundColor: colors.emergency,
-              foregroundColor: colors.emergencyText,
-            ),
-            child: const Text('Reiniciar'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  int _computeStars() {
-    if (_level == 'Fácil') {
-      if (_seconds <= 25 && _moves <= 10) return 3;
-      if (_seconds <= 40 && _moves <= 15) return 2;
-      if (_seconds <= 60 || _moves <= 20) return 1;
-    } else if (_level == 'Medio') {
-      if (_seconds <= 40 && _moves <= 14) return 3;
-      if (_seconds <= 60 && _moves <= 18) return 2;
-      if (_seconds <= 90 || _moves <= 24) return 1;
-    } else if (_level == 'Difícil') {
-      if (_seconds <= 60 && _moves <= 18) return 3;
-      if (_seconds <= 90 && _moves <= 24) return 2;
-      if (_seconds <= 120 || _moves <= 30) return 1;
-    }
-    return 0;
-  }
-
-  void _showWinDialog() {
-    final colors = context.appColors;
-    final stars = _computeStars();
-    _starsPerLevel[_level ?? ''] = stars;
-
-    String? nextLevel;
-    if (_level == 'Fácil') {
-      nextLevel = 'Medio';
-    } else if (_level == 'Medio') {
-      nextLevel = 'Difícil';
-    }
-
-    if (nextLevel == null) {
-      _showFinalAverageDialog();
-      return;
-    }
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        backgroundColor: colors.cardBackground,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        title: Text(
-          'Nivel completado',
-          style: TextStyle(
-            color: colors.textPrimary,
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Completaste el nivel $_level en $_moves movimientos y ${_seconds}s.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colors.textPrimary),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                3,
-                (i) => Icon(
-                  Icons.star_rounded,
-                  size: 34,
-                  color: i < stars ? Colors.amber : colors.border,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '¿Quieres jugar de nuevo este nivel?',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: colors.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _resetGame();
+              _resetGameWithEncouragement();
             },
             style: TextButton.styleFrom(
               backgroundColor: colors.secondaryButton,
               foregroundColor: colors.secondaryButtonText,
             ),
-            child: const Text('Sí, jugar de nuevo'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              setState(() => _level = nextLevel);
-              _startGame();
-            },
-            child: Text(
-              'Continuar al siguiente nivel',
-              style: TextStyle(
-                color: colors.secondaryButton,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _goToGamesMenuClearingGame();
-            },
-            child: Text(
-              'Salir al menú',
-              style: TextStyle(color: colors.textPrimary),
-            ),
+            child: const Text('Reintentar'),
           ),
         ],
       ),
     );
   }
 
-  void _showFinalAverageDialog() {
+  Future<void> _showWinDialog() async {
     final colors = context.appColors;
     _confettiCtrl.play();
 
-    final totalStars = _starsPerLevel.values.fold<int>(0, (a, b) => a + b);
-    final avg = totalStars / _starsPerLevel.length;
-    final fullStars = avg.floor();
-    final hasHalf = avg - fullStars >= 0.5;
+    final oldUnlocked = _unlockedLevel;
+    final newUnlocked = await _progressService.unlockNextLevel(_selectedLevel);
 
-    String feedback;
-    if (avg >= 2.5) {
-      feedback = 'Excelente desempeño, has logrado dominar el juego.';
-    } else if (avg >= 1.5) {
-      feedback = 'Buen trabajo, tu memoria está mejorando.';
-    } else {
-      feedback = 'Sigue practicando, puedes hacerlo mejor.';
-    }
+    if (!mounted) return;
+
+    setState(() {
+      _unlockedLevel = newUnlocked;
+    });
+
+    final bool unlockedNewLevel = newUnlocked > oldUnlocked;
+    final bool hasNextLevel =
+        _selectedLevel < MemoramaProgressService.maxLevel &&
+            newUnlocked > _selectedLevel;
 
     showDialog(
       context: context,
@@ -476,7 +484,7 @@ class _MemoramaPageState extends State<MemoramaPage>
               maxBlastForce: 25,
               minBlastForce: 10,
               gravity: 0.25,
-              shouldLoop: true,
+              shouldLoop: false,
               colors: [
                 colors.secondaryButton,
                 colors.primaryButton,
@@ -486,126 +494,164 @@ class _MemoramaPageState extends State<MemoramaPage>
             ),
           ),
           Center(
-            child: Container(
-              width: 330,
-              padding: const EdgeInsets.all(26),
-              decoration: BoxDecoration(
-                color: colors.cardBackground,
-                border: Border.all(color: colors.primaryButton, width: 2),
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: context.isDark
-                    ? []
-                    : [
-                        BoxShadow(
-                          color: colors.textPrimary.withValues(alpha: 0.08),
-                          blurRadius: 10,
-                          offset: const Offset(0, 6),
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 340,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: colors.cardBackground,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: colors.primaryButton,
+                    width: 2,
+                  ),
+                  boxShadow: context.isDark
+                      ? []
+                      : [
+                          BoxShadow(
+                            color: colors.textPrimary.withValues(alpha: 0.10),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 74,
+                      height: 74,
+                      decoration: BoxDecoration(
+                        color: colors.secondaryButton.withValues(alpha: 0.18),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        unlockedNewLevel
+                            ? Icons.lock_open_rounded
+                            : Icons.emoji_events_rounded,
+                        size: 42,
+                        color: colors.secondaryButton,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      unlockedNewLevel
+                          ? '¡Nuevo nivel desbloqueado!'
+                          : _randomText(_winTitles),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: colors.textPrimary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 22,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      unlockedNewLevel
+                          ? 'Completaste $_levelName. Ahora puedes avanzar al Nivel $newUnlocked.'
+                          : _randomText(_winMessages),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: colors.textPrimary,
+                        fontSize: 16,
+                        height: 1.35,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: context.isDark
+                            ? colors.inputFill
+                            : colors.chipBackground,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: colors.border),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            'Resumen de la partida',
+                            style: TextStyle(
+                              color: colors.textSecondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Movimientos: $_moves',
+                            style: TextStyle(
+                              color: colors.textPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            'Tiempo: ${_formatTime()}',
+                            style: TextStyle(
+                              color: colors.textPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _confettiCtrl.stop();
+                            _resetGame();
+                          },
+                          style: TextButton.styleFrom(
+                            backgroundColor: colors.secondaryButton,
+                            foregroundColor: colors.secondaryButtonText,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 12,
+                            ),
+                          ),
+                          child: const Text('Jugar de nuevo'),
+                        ),
+                        if (hasNextLevel)
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _confettiCtrl.stop();
+                              setState(() => _selectedLevel = newUnlocked);
+                              _startGame();
+                            },
+                            style: TextButton.styleFrom(
+                              backgroundColor: colors.primaryButton,
+                              foregroundColor: colors.primaryButtonText,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 12,
+                              ),
+                            ),
+                            child: const Text('Siguiente nivel'),
+                          ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _confettiCtrl.stop();
+                            setState(() => _started = false);
+                          },
+                          child: Text(
+                            'Volver al inicio',
+                            style: TextStyle(color: colors.textPrimary),
+                          ),
                         ),
                       ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Has completado los tres niveles',
-                    style: TextStyle(
-                      color: colors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20,
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Column(
-                    children: _starsPerLevel.entries.map((entry) {
-                      final stars = entry.value;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              '${entry.key}: ',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: colors.textPrimary,
-                              ),
-                            ),
-                            Row(
-                              children: List.generate(
-                                3,
-                                (i) => Icon(
-                                  Icons.star_rounded,
-                                  color: i < stars ? Colors.amber : colors.border,
-                                  size: 28,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 12),
-                  Divider(thickness: 1, color: colors.border),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Estrellas finales',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: colors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      for (int i = 0; i < fullStars; i++)
-                        const Icon(
-                          Icons.star_rounded,
-                          color: Colors.amber,
-                          size: 34,
-                        ),
-                      if (hasHalf)
-                        const Icon(
-                          Icons.star_half_rounded,
-                          color: Colors.amber,
-                          size: 34,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    feedback,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: colors.textPrimary,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(height: 25),
-                  TextButton(
-                    onPressed: () {
-                      _confettiCtrl.stop();
-                      _goToGamesMenuClearingGame();
-                    },
-                    style: TextButton.styleFrom(
-                      backgroundColor: colors.secondaryButton,
-                      foregroundColor: colors.secondaryButtonText,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                    ),
-                    child: const Text(
-                      'Volver al menú de juegos',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -615,6 +661,11 @@ class _MemoramaPageState extends State<MemoramaPage>
   }
 
   Future<void> _showLevelBanner(String text) async {
+    if (!mounted) return;
+
+    _bannerCtrl.stop();
+    _bannerCtrl.reset();
+
     setState(() {
       _bannerText = text;
       _showBanner = true;
@@ -628,6 +679,99 @@ class _MemoramaPageState extends State<MemoramaPage>
 
     if (!mounted) return;
     setState(() => _showBanner = false);
+  }
+
+  Widget _buildStatCard({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    final colors = context.appColors;
+
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        decoration: BoxDecoration(
+          color: context.isDark ? colors.inputFill : colors.chipBackground,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colors.border),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 20, color: colors.primaryButton),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: colors.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _cardBackgroundColor({
+    required int cardValue,
+    required bool isUp,
+    required bool isMatched,
+  }) {
+    final colors = context.appColors;
+    final pairColor = _pairColor(cardValue);
+
+    if (isMatched) {
+      return context.isDark
+          ? pairColor.withValues(alpha: 0.42)
+          : pairColor.withValues(alpha: 0.28);
+    }
+
+    if (isUp) {
+      return colors.primaryButton.withValues(alpha: 0.92);
+    }
+
+    return context.isDark ? colors.inputFill : colors.chipBackground;
+  }
+
+  Color _cardBorderColor({
+    required int cardValue,
+    required bool isUp,
+    required bool isMatched,
+  }) {
+    final colors = context.appColors;
+    final pairColor = _pairColor(cardValue);
+
+    if (isMatched) return pairColor;
+    if (isUp) return colors.secondaryButton;
+
+    return colors.border;
+  }
+
+  Color _cardIconColor({
+    required int cardValue,
+    required bool isUp,
+    required bool isMatched,
+  }) {
+    final colors = context.appColors;
+    final pairColor = _pairColor(cardValue);
+
+    if (isMatched) return pairColor;
+    if (isUp) return colors.primaryButtonText;
+
+    return colors.textSecondary;
   }
 
   @override
@@ -653,28 +797,51 @@ class _MemoramaPageState extends State<MemoramaPage>
         alignment: Alignment.center,
         children: [
           SafeArea(
-            child: !_started ? _buildMenuInicio(context) : _buildGameUI(context),
+            child: _loadingLevel
+                ? Center(
+                    child: CircularProgressIndicator(
+                      color: colors.primaryButton,
+                    ),
+                  )
+                : !_started
+                    ? _buildMenuInicio(context)
+                    : _buildGameUI(context),
           ),
           if (_showBanner)
-            FadeTransition(
-              opacity: _bannerOpacity,
-              child: SlideTransition(
-                position: _bannerSlide,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colors.cardBackground,
-                    border: Border.all(color: colors.primaryButton, width: 2),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(
-                    _bannerText,
-                    style: TextStyle(
-                      color: colors.textPrimary,
-                      fontWeight: FontWeight.bold,
+            Positioned(
+              top: 24,
+              child: FadeTransition(
+                opacity: _bannerOpacity,
+                child: SlideTransition(
+                  position: _bannerSlide,
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 330),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.cardBackground,
+                      border: Border.all(color: colors.primaryButton, width: 2),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: context.isDark
+                          ? []
+                          : [
+                              BoxShadow(
+                                color:
+                                    colors.textPrimary.withValues(alpha: 0.08),
+                                blurRadius: 12,
+                                offset: const Offset(0, 5),
+                              ),
+                            ],
+                    ),
+                    child: Text(
+                      _bannerText,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: colors.textPrimary,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
@@ -689,72 +856,181 @@ class _MemoramaPageState extends State<MemoramaPage>
     final colors = context.appColors;
 
     return Center(
-      child: Container(
-        width: 300,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: colors.cardBackground,
-          border: Border.all(color: colors.primaryButton, width: 2),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: context.isDark
-              ? []
-              : [
-                  BoxShadow(
-                    color: colors.textPrimary.withValues(alpha: 0.06),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Container(
+          width: 350,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: colors.cardBackground,
+            border: Border.all(color: colors.primaryButton, width: 2),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: context.isDark
+                ? []
+                : [
+                    BoxShadow(
+                      color: colors.textPrimary.withValues(alpha: 0.06),
+                      blurRadius: 14,
+                      offset: const Offset(0, 7),
+                    ),
+                  ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 78,
+                height: 78,
+                decoration: BoxDecoration(
+                  color: colors.primaryButton.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.extension_rounded,
+                  size: 46,
+                  color: colors.primaryButton,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Entrena tu memoria',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 23,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Avanza poco a poco. Cada intento ayuda a ejercitar tu mente.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: colors.textSecondary,
+                  fontSize: 15,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 22),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color:
+                      context.isDark ? colors.inputFill : colors.chipBackground,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: colors.border),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'Nivel actual',
+                      style: TextStyle(
+                        color: colors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Nivel $_unlockedLevel',
+                      style: TextStyle(
+                        color: colors.textPrimary,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: LinearProgressIndicator(
+                        value: _progressValue,
+                        minHeight: 10,
+                        backgroundColor: colors.border.withValues(alpha: 0.35),
+                        color: colors.primaryButton,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '$_unlockedLevel de ${MemoramaProgressService.maxLevel} niveles',
+                      style: TextStyle(
+                        color: colors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 10,
+                runSpacing: 10,
+                children: List.generate(
+                  MemoramaProgressService.maxLevel,
+                  (index) {
+                    final level = index + 1;
+                    final unlocked = level <= _unlockedLevel;
+                    final selected = level == _selectedLevel;
+
+                    return ChoiceChip(
+                      selected: selected,
+                      label: Text('Nivel $level'),
+                      onSelected: unlocked
+                          ? (_) => setState(() => _selectedLevel = level)
+                          : null,
+                      avatar: unlocked
+                          ? Icon(
+                              selected
+                                  ? Icons.check_circle_rounded
+                                  : Icons.radio_button_unchecked_rounded,
+                              size: 16,
+                              color: selected
+                                  ? colors.primaryButtonText
+                                  : colors.textPrimary,
+                            )
+                          : Icon(
+                              Icons.lock_rounded,
+                              size: 16,
+                              color: colors.textSecondary,
+                            ),
+                      selectedColor: colors.primaryButton,
+                      backgroundColor: context.isDark
+                          ? colors.inputFill
+                          : colors.chipBackground,
+                      disabledColor: context.isDark
+                          ? colors.inputFill
+                          : colors.chipBackground,
+                      labelStyle: TextStyle(
+                        color: selected
+                            ? colors.primaryButtonText
+                            : unlocked
+                                ? colors.textPrimary
+                                : colors.textSecondary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      side: BorderSide(
+                        color: selected ? colors.primaryButton : colors.border,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 25),
+              ElevatedButton.icon(
+                onPressed: _startGame,
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: const Text('Jugar ahora'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colors.primaryButton,
+                  foregroundColor: colors.primaryButtonText,
+                  minimumSize: const Size(double.infinity, 54),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
                   ),
-                ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Comienza tu juego',
-              style: TextStyle(
-                color: colors.textPrimary,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
-            const SizedBox(height: 20),
-            DropdownButtonFormField<String>(
-              initialValue: _level,
-              dropdownColor: colors.cardBackground,
-              decoration: InputDecoration(
-                labelText: 'Selecciona el nivel',
-                labelStyle: TextStyle(color: colors.textSecondary),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              style: TextStyle(color: colors.textPrimary),
-              items: [
-                DropdownMenuItem(
-                  value: 'Fácil',
-                  child: Text('Fácil', style: TextStyle(color: colors.textPrimary)),
-                ),
-                DropdownMenuItem(
-                  value: 'Medio',
-                  child: Text('Medio', style: TextStyle(color: colors.textPrimary)),
-                ),
-                DropdownMenuItem(
-                  value: 'Difícil',
-                  child: Text('Difícil', style: TextStyle(color: colors.textPrimary)),
-                ),
-              ],
-              onChanged: (v) => setState(() => _level = v),
-            ),
-            const SizedBox(height: 25),
-            ElevatedButton(
-              onPressed: _level == null ? null : _startGame,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: colors.primaryButton,
-                foregroundColor: colors.primaryButtonText,
-              ),
-              child: const Text('Iniciar juego'),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -774,50 +1050,73 @@ class _MemoramaPageState extends State<MemoramaPage>
         return Column(
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
               child: Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: colors.cardBackground,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(22),
                   border: Border.all(color: colors.border),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Movimientos: $_moves',
-                          style: TextStyle(
-                            color: colors.textPrimary,
-                            fontWeight: FontWeight.w600,
+                  boxShadow: context.isDark
+                      ? []
+                      : [
+                          BoxShadow(
+                            color: colors.textPrimary.withValues(alpha: 0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
                           ),
+                        ],
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.psychology_alt_rounded,
+                          color: colors.primaryButton,
+                          size: 22,
                         ),
+                        const SizedBox(width: 8),
                         Text(
-                          'Pares: $_score',
+                          _levelName,
                           style: TextStyle(
                             color: colors.textPrimary,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
                           ),
                         ),
                       ],
                     ),
-                    Text(
-                      _formatTime(),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: colors.textPrimary,
-                      ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        _buildStatCard(
+                          icon: Icons.timer_outlined,
+                          label: 'Tiempo',
+                          value: _formatTime(),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildStatCard(
+                          icon: Icons.touch_app_outlined,
+                          label: 'Movs.',
+                          value: '$_moves',
+                        ),
+                        const SizedBox(width: 8),
+                        _buildStatCard(
+                          icon: Icons.check_circle_outline_rounded,
+                          label: 'Pares',
+                          value: '$_score/$_pairCount',
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
             ),
             Expanded(
+              flex: 8,
               child: Padding(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
                 child: GridView.builder(
                   physics: const BouncingScrollPhysics(),
                   itemCount: _cards.length,
@@ -829,45 +1128,73 @@ class _MemoramaPageState extends State<MemoramaPage>
                   ),
                   itemBuilder: (_, i) {
                     final isUp = _revealed[i];
-                    final icon = _icons[_cards[i] % _icons.length];
+                    final isMatched = _matched[i];
+                    final cardValue = _cards[i];
+                    final icon = _icons[cardValue % _icons.length];
+                    final pairColor = _pairColor(cardValue);
 
                     return SizedBox.square(
                       dimension: cardSize,
                       child: InkWell(
                         onTap: () => _onCardTap(i),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(18),
                         child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
+                          duration: const Duration(milliseconds: 230),
+                          curve: Curves.easeOut,
                           decoration: BoxDecoration(
-                            color: isUp
-                                ? colors.primaryButton.withValues(alpha: 0.90)
-                                : (context.isDark
-                                    ? colors.inputFill
-                                    : colors.chipBackground),
-                            borderRadius: BorderRadius.circular(12),
+                            color: _cardBackgroundColor(
+                              cardValue: cardValue,
+                              isUp: isUp,
+                              isMatched: isMatched,
+                            ),
+                            borderRadius: BorderRadius.circular(18),
                             border: Border.all(
-                              color: isUp ? colors.secondaryButton : colors.border,
-                              width: 2,
+                              color: _cardBorderColor(
+                                cardValue: cardValue,
+                                isUp: isUp,
+                                isMatched: isMatched,
+                              ),
+                              width: isMatched ? 3 : (isUp ? 3 : 2),
                             ),
                             boxShadow: context.isDark
                                 ? []
                                 : [
                                     BoxShadow(
-                                      color: colors.textPrimary.withValues(alpha: 0.05),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 3),
+                                      color: isMatched
+                                          ? pairColor.withValues(alpha: 0.25)
+                                          : colors.textPrimary
+                                              .withValues(alpha: 0.07),
+                                      blurRadius: isMatched ? 16 : (isUp ? 12 : 8),
+                                      offset: const Offset(0, 4),
                                     ),
                                   ],
                           ),
                           child: Center(
-                            child: AnimatedOpacity(
-                              duration: const Duration(milliseconds: 200),
-                              opacity: isUp ? 1 : 0,
-                              child: Icon(
-                                icon,
-                                size: cardSize * 0.45,
-                                color: colors.textPrimary,
-                              ),
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 230),
+                              transitionBuilder: (child, animation) {
+                                return ScaleTransition(
+                                  scale: animation,
+                                  child: child,
+                                );
+                              },
+                              child: isUp || isMatched
+                                  ? Icon(
+                                      icon,
+                                      key: ValueKey('icon_$i'),
+                                      size: cardSize * 0.45,
+                                      color: _cardIconColor(
+                                        cardValue: cardValue,
+                                        isUp: isUp,
+                                        isMatched: isMatched,
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.psychology_alt_outlined,
+                                      key: ValueKey('back_$i'),
+                                      size: cardSize * 0.34,
+                                      color: colors.textSecondary,
+                                    ),
                             ),
                           ),
                         ),
@@ -878,14 +1205,14 @@ class _MemoramaPageState extends State<MemoramaPage>
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 18),
               child: Wrap(
                 alignment: WrapAlignment.center,
                 spacing: 12,
                 runSpacing: 12,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: _resetGame,
+                    onPressed: _resetGameWithEncouragement,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: colors.secondaryButton,
                       foregroundColor: colors.secondaryButtonText,
@@ -895,12 +1222,9 @@ class _MemoramaPageState extends State<MemoramaPage>
                       ),
                       elevation: context.isDark ? 0 : 3,
                     ),
-                    icon: Icon(
-                      Icons.refresh,
-                      color: colors.secondaryButtonText,
-                    ),
+                    icon: Icon(Icons.refresh, color: colors.secondaryButtonText),
                     label: const Text(
-                      'Reiniciar',
+                      'Reintentar',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
@@ -909,10 +1233,7 @@ class _MemoramaPageState extends State<MemoramaPage>
                   ),
                   ElevatedButton.icon(
                     onPressed: _pauseGame,
-                    icon: Icon(
-                      Icons.pause,
-                      color: colors.emergencyText,
-                    ),
+                    icon: Icon(Icons.pause, color: colors.emergencyText),
                     label: const Text('Pausa'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: colors.emergency,
@@ -939,8 +1260,3 @@ class _MemoramaPageState extends State<MemoramaPage>
     return '$m:$s';
   }
 }
-
-
-
-
-

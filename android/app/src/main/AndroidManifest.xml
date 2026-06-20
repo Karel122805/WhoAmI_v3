@@ -8,7 +8,10 @@
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+<<<<<<< HEAD
 
+=======
+>>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -33,6 +36,25 @@
         android:name="android.hardware.camera"
         android:required="false" />
 
+<<<<<<< HEAD
+=======
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
+
+>>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
     <application
         android:name="${applicationName}"
         android:label="WhoAmI?"
@@ -78,6 +100,7 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+<<<<<<< HEAD
         <receiver
             android:name=".AlarmReceiver"
             android:exported="true" />
@@ -91,6 +114,8 @@
             </intent-filter>
         </receiver>
 
+=======
+>>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
             android:exported="false">
@@ -110,6 +135,7 @@
 
     </application>
 
+<<<<<<< HEAD
     <queries>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
@@ -126,4 +152,6 @@
         </intent>
     </queries>
 
+=======
+>>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
 </manifest>

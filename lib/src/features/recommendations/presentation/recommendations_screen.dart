@@ -2,103 +2,30 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+
 import 'package:whoami_app/src/core/theme/app_theme.dart';
 
-class QuickGuidesPage extends StatefulWidget {
-  const QuickGuidesPage({super.key});
+import '../data/recommendations_data.dart';
+import '../models/recommendation_model.dart';
 
-  static const route = '/quick-guides';
+class RecommendationsScreen extends StatefulWidget {
+  const RecommendationsScreen({super.key});
 
   @override
-  State<QuickGuidesPage> createState() => _QuickGuidesPageState();
+  State<RecommendationsScreen> createState() => _RecommendationsScreenState();
 }
 
-class _QuickGuidesPageState extends State<QuickGuidesPage> {
+class _RecommendationsScreenState extends State<RecommendationsScreen> {
   final FlutterTts _tts = FlutterTts();
   final Random _rnd = Random();
 
   bool _showCategoryMenu = true;
-
-  final Map<String, List<String>> _guidesByCategory = {
-    'Emergencia': [
-      'Mantén la calma y acompaña al paciente en todo momento.',
-      'Si se desorienta, llévalo a un lugar seguro y familiar.',
-      'Verifica signos vitales si hay caída.',
-      'Evita mover al paciente si siente dolor intenso.',
-      'Llama a emergencias si presenta cambios bruscos de conducta.',
-      'Asegura que tenga identificación siempre consigo.',
-      'Busca un lugar tranquilo para evitar sobreestimulación.',
-      'Llama a un familiar si la situación se complica.',
-      'Revisa si tomó sus medicamentos correctamente.',
-      'Mantente atento a signos de deshidratación o fiebre.',
-    ],
-    'Rutina': [
-      'Establece horarios fijos para levantarse y dormir.',
-      'Organiza la ropa un día antes.',
-      'Divide actividades en pasos sencillos.',
-      'Incluye pausas para evitar cansancio.',
-      'Usa recordatorios visuales en casa.',
-      'Mantén rutinas constantes para generar seguridad.',
-      'Evita cambios bruscos de última hora.',
-      'Realiza actividades tranquilas antes de dormir.',
-      'Ordena el entorno para reducir estrés.',
-      'Permite que participe en tareas simples.',
-    ],
-    'Comunicación': [
-      'Habla despacio y usa frases cortas.',
-      'Haz contacto visual siempre.',
-      'Haz preguntas simples de sí/no.',
-      'Usa gestos o imágenes como apoyo.',
-      'Evita discusiones o correcciones duras.',
-      'Dale tiempo para responder.',
-      'Evita hablar rápido.',
-      'Refuerza con gestos calmados.',
-      'Escucha sin interrumpir.',
-      'Valida sus emociones cuando esté confundido.',
-    ],
-    'Seguridad': [
-      'Retira alfombras que puedan causar caídas.',
-      'Asegura puertas y ventanas.',
-      'Coloca iluminación nocturna.',
-      'Guarda objetos peligrosos fuera de alcance.',
-      'Evita pisos mojados.',
-      'Coloca barandales en lugares clave.',
-      'Mantén productos tóxicos bajo llave.',
-      'Evita cables sueltos.',
-      'Supervisa al usar la cocina.',
-      'Usa calzado seguro y cómodo.',
-    ],
-    'Medicina': [
-      'Usa un pastillero semanal para organizar medicamentos.',
-      'Configura alarmas para recordar horarios.',
-      'No cambies dosis sin consultar al médico.',
-      'Registra efectos secundarios inusuales.',
-      'Verifica que no falte ninguna dosis.',
-      'Guarda medicamentos fuera del alcance.',
-      'Acompáñalo mientras los toma.',
-      'Ten la receta médica a la mano.',
-      'Revisa fechas de caducidad.',
-      'No mezcles medicamentos sin supervisión.',
-    ],
-  };
-
-  late final Map<String, IconData> _catIcon = {
-    'Emergencia': Icons.warning_rounded,
-    'Rutina': Icons.bedtime_rounded,
-    'Comunicación': Icons.chat_rounded,
-    'Seguridad': Icons.shield_rounded,
-    'Medicina': Icons.medical_services_rounded,
-  };
-
-  late final List<String> _categories;
-
-  String _selected = 'Emergencia';
-  List<String> _visible = [];
+  RecommendationModel? _selectedRecommendation;
+  List<String> _visibleRecommendations = [];
 
   @override
   void initState() {
     super.initState();
-    _categories = [..._guidesByCategory.keys];
     _configureTts();
   }
 
@@ -120,17 +47,17 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
     await _tts.speak(text);
   }
 
-  Future<void> _loadCategory(String category) async {
+  Future<void> _openCategory(RecommendationModel recommendation) async {
     await _stopTts();
 
-    final shuffled =
-        List<String>.from(_guidesByCategory[category]!)..shuffle(_rnd);
+    final shuffled = List<String>.from(recommendation.recommendations)
+      ..shuffle(_rnd);
 
     if (!mounted) return;
 
     setState(() {
-      _selected = category;
-      _visible = shuffled;
+      _selectedRecommendation = recommendation;
+      _visibleRecommendations = shuffled;
       _showCategoryMenu = false;
     });
   }
@@ -142,7 +69,8 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
 
     setState(() {
       _showCategoryMenu = true;
-      _visible = [];
+      _selectedRecommendation = null;
+      _visibleRecommendations = [];
     });
   }
 
@@ -155,7 +83,6 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
     await _stopTts();
 
     if (!mounted) return;
-
     Navigator.of(context).maybePop();
   }
 
@@ -184,7 +111,9 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
       child: Scaffold(
         backgroundColor: colors.pageBackground,
         appBar: AppBar(
-          title: Text(_showCategoryMenu ? 'Guías' : _selected),
+          title: Text(_showCategoryMenu
+              ? 'Recomendaciones'
+              : _selectedRecommendation?.title ?? 'Recomendaciones'),
           centerTitle: true,
           elevation: 0,
           leading: IconButton(
@@ -192,7 +121,7 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
             onPressed: _handleBack,
           ),
         ),
-        body: _showCategoryMenu ? _buildCategoryMenu() : _buildGuidesView(),
+        body: _showCategoryMenu ? _buildCategoryMenu() : _buildRecommendationsView(),
       ),
     );
   }
@@ -206,34 +135,36 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
         crossAxisCount: 2,
         crossAxisSpacing: 14,
         mainAxisSpacing: 14,
-        children: _categories.map((category) {
+        children: caregiverRecommendations.map((recommendation) {
           return _CategoryCard(
-            title: category,
-            icon: _catIcon[category]!,
-            color: _themeCategoryColor(category),
+            recommendation: recommendation,
+            color: _themeCategoryColor(recommendation),
             textColor: colors.textPrimary,
-            onTap: () => _loadCategory(category),
+            onTap: () => _openCategory(recommendation),
           );
         }).toList(),
       ),
     );
   }
 
-  Widget _buildGuidesView() {
+  Widget _buildRecommendationsView() {
+    final selected = _selectedRecommendation;
+    if (selected == null) return const SizedBox.shrink();
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 70),
       child: Column(
         children: [
           Expanded(
             child: ListView.builder(
-              itemCount: _visible.length,
+              itemCount: _visibleRecommendations.length,
               itemBuilder: (_, i) {
-                final text = _visible[i];
+                final text = _visibleRecommendations[i];
 
-                return _GuideCard(
+                return _RecommendationCard(
                   text: text,
-                  color: _themeCategoryColor(_selected),
-                  icon: _catIcon[_selected]!,
+                  color: _themeCategoryColor(selected),
+                  icon: selected.icon,
                   onTap: () => _speak(text),
                 );
               },
@@ -255,37 +186,35 @@ class _QuickGuidesPageState extends State<QuickGuidesPage> {
     );
   }
 
-  Color _themeCategoryColor(String category) {
+  Color _themeCategoryColor(RecommendationModel item) {
     final colors = context.appColors;
 
-    switch (category) {
-      case 'Emergencia':
+    switch (item.title) {
+      case 'Salud física':
         return colors.categoryYellow;
-      case 'Rutina':
-        return colors.categoryGreen;
-      case 'Comunicación':
+      case 'Salud mental':
+        return colors.categoryPink;
+      case 'Memoria':
         return colors.categoryBlue;
+      case 'Rutina y sueño':
+        return colors.categoryGreen;
       case 'Seguridad':
         return colors.categoryPurple;
-      case 'Medicina':
-        return colors.categoryPink;
       default:
-        return colors.categoryBlue;
+        return item.color;
     }
   }
 }
 
 class _CategoryCard extends StatelessWidget {
   const _CategoryCard({
-    required this.title,
-    required this.icon,
+    required this.recommendation,
     required this.color,
     required this.textColor,
     required this.onTap,
   });
 
-  final String title;
-  final IconData icon;
+  final RecommendationModel recommendation;
   final Color color;
   final Color textColor;
   final VoidCallback onTap;
@@ -320,13 +249,13 @@ class _CategoryCard extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                icon,
+                recommendation.icon,
                 size: 48,
                 color: textColor,
               ),
               const SizedBox(height: 10),
               Text(
-                title,
+                recommendation.title,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 18,
@@ -342,8 +271,8 @@ class _CategoryCard extends StatelessWidget {
   }
 }
 
-class _GuideCard extends StatelessWidget {
-  const _GuideCard({
+class _RecommendationCard extends StatelessWidget {
+  const _RecommendationCard({
     required this.text,
     required this.onTap,
     required this.color,

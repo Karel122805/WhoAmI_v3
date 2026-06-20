@@ -12,7 +12,9 @@ import 'package:whoami_app/src/features/patients/presentation/pages/patients_lis
 import 'package:whoami_app/src/features/memories/presentation/pages/calendar_page.dart';
 import 'package:whoami_app/src/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:whoami_app/src/features/emergency/presentation/pages/emergency_map_page.dart';
+import 'package:whoami_app/src/features/emergency/presentation/pages/panic_button_page.dart';
 import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
+import 'package:whoami_app/src/features/support_contacts/presentation/support_contacts_screen.dart';
 
 import 'package:whoami_app/src/features/memories/data/memories_scheduler.dart';
 import 'package:whoami_app/src/features/notifications/data/notifications_service.dart';
@@ -96,17 +98,17 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
 
           _lastAlertId = alertId;
 
-          final data = doc.data();
-          final consultantId = data['consultantId'] ?? '';
-          final consultantName = data['consultantName'] ?? 'Consultante';
-          final lat = data['lat'];
-          final lng = data['lng'];
-          final title = data['title'] ?? 'Emergencia detectada';
-          final body = data['body'] ?? '$consultantName necesita ayuda.';
+        final data = doc.data();
+        final consultantId = data['consultantId'] ?? '';
+        final consultantName = data['consultantName'] ?? 'Consultante';
+        final lat = data['lat'];
+        final lng = data['lng'];
+        final title = data['title'] ?? '🚨 Emergencia detectada';
+        final body = data['body'] ?? '$consultantName necesita ayuda.';
 
-          if (lat == null || lng == null) continue;
+        if (lat == null || lng == null) continue;
 
-          debugPrint('Emergencia recibida en tiempo real para cuidador $uid');
+        debugPrint('🆘 Emergencia recibida en tiempo real para cuidador $uid');
 
           if (!kIsWeb) {
             NotificationsService.showInstant(
@@ -125,188 +127,171 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             final colors = context.appColors;
 
-            final dialogBgTop = context.isDark
-                ? const Color(0xFF3B2024)
-                : const Color(0xFFFFDDDD);
+          final dialogBgTop = context.isDark
+              ? const Color(0xFF3B2024)
+              : const Color(0xFFFFDDDD);
+          final dialogBgBottom = context.isDark
+              ? const Color(0xFF24161A)
+              : const Color(0xFFFFF1F1);
+          final shadowColor = context.isDark
+              ? Colors.black.withValues(alpha: 0.45)
+              : Colors.black.withValues(alpha: 0.20);
+          final dangerAccent = context.isDark
+              ? const Color(0xFFFF8E8E)
+              : Colors.red;
 
-            final dialogBgBottom = context.isDark
-                ? const Color(0xFF24161A)
-                : const Color(0xFFFFF1F1);
-
-            final shadowColor = context.isDark
-                ? Colors.black.withValues(alpha: 0.45)
-                : Colors.black.withValues(alpha: 0.20);
-
-            final dangerAccent = context.isDark
-                ? const Color(0xFFFF8E8E)
-                : Colors.red;
-
-            showDialog(
-              context: context,
-              barrierDismissible: false,
-              builder: (_) => Dialog(
-                backgroundColor: Colors.transparent,
-                insetPadding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 24,
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(22),
-                    gradient: LinearGradient(
-                      colors: [
-                        dialogBgTop,
-                        dialogBgBottom,
-                      ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: shadowColor,
-                        blurRadius: 22,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                    border: Border.all(
-                      color: context.isDark
-                          ? const Color(0xFF6B2B33)
-                          : const Color(0xFFFFC2C2),
-                    ),
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                  gradient: LinearGradient(
+                    colors: [dialogBgTop, dialogBgBottom],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
                   ),
-                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: dangerAccent.withValues(alpha: 0.18),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.warning_rounded,
-                              color: dangerAccent,
-                              size: 32,
-                            ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: shadowColor,
+                      blurRadius: 22,
+                      offset: const Offset(0, 8),
+                    )
+                  ],
+                  border: Border.all(
+                    color: context.isDark
+                        ? const Color(0xFF6B2B33)
+                        : const Color(0xFFFFC2C2),
+                  ),
+                ),
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: dangerAccent.withValues(alpha: 0.18),
+                            shape: BoxShape.circle,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Emergencia de $consultantName',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
-                                color: colors.textPrimary,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        body,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: colors.textPrimary,
-                          fontSize: 16,
-                          height: 1.3,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: SizedBox(
-                          width: double.infinity,
-                          height: 240,
-                          child: EmergencyMapPage(
-                            consultantId: consultantId,
-                            lat: lat,
-                            lng: lng,
-                            isDialog: true,
+                          child: Icon(
+                            Icons.warning_rounded,
+                            color: dangerAccent,
+                            size: 32,
                           ),
                         ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Emergencia de $consultantName',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: colors.textPrimary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      body,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: colors.textPrimary,
+                        fontSize: 16,
+                        height: 1.3,
+                        fontWeight: FontWeight.w500,
                       ),
-                      const SizedBox(height: 20),
-                      SizedBox(
+                    ),
+                    const SizedBox(height: 18),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: SizedBox(
                         width: double.infinity,
-                        height: 48,
-                        child: ElevatedButton.icon(
-                          icon: const Icon(
-                            Icons.navigation_rounded,
+                        height: 240,
+                        child: EmergencyMapPage(
+                          consultantId: consultantId,
+                          lat: lat,
+                          lng: lng,
+                          isDialog: true,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.navigation_rounded,
+                            color: Colors.white),
+                        label: const Text(
+                          "Abrir en Google Maps",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
                             color: Colors.white,
                           ),
-                          label: const Text(
-                            'Abrir en Google Maps',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
-                              color: Colors.white,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: context.isDark
-                                ? const Color(0xFFC35B5B)
-                                : Colors.redAccent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            elevation: 4,
-                          ),
-                          onPressed: () async {
-                            final url =
-                                'https://www.google.com/maps?q=$lat,$lng';
-
-                            final uri = Uri.parse(url);
-
-                            if (await canLaunchUrl(uri)) {
-                              await launchUrl(
-                                uri,
-                                mode: LaunchMode.externalApplication,
-                              );
-                            }
-
-                            if (context.mounted) {
-                              Navigator.pop(context);
-                            }
-
-                            await _resolveEmergency(alertId);
-                          },
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: context.isDark
+                              ? const Color(0xFFC35B5B)
+                              : Colors.redAccent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 4,
+                        ),
                         onPressed: () async {
-                          Navigator.pop(context);
+                          final url = 'https://www.google.com/maps?q=$lat,$lng';
+                          final uri = Uri.parse(url);
+
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(uri,
+                                mode: LaunchMode.externalApplication);
+                          }
+
+                          if (context.mounted) Navigator.pop(context);
                           await _resolveEmergency(alertId);
                         },
-                        child: Text(
-                          'Cerrar',
-                          style: TextStyle(
-                            color: colors.textPrimary,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            decoration: TextDecoration.underline,
-                          ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () async {
+                        Navigator.pop(context);
+                        await _resolveEmergency(alertId);
+                      },
+                      child: Text(
+                        "Cerrar",
+                        style: TextStyle(
+                          color: colors.textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.underline,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-            );
-          });
-        }
-      },
-      onError: (error) {
-        debugPrint('Error escuchando emergencias: $error');
-      },
-    );
+            ),
+          );
+        });
+      }
+    }, onError: (error) {
+      debugPrint('⚠️ Error escuchando emergencias: $error');
+    });
   }
+
+
 
   Future<void> _openNotifications() async {
     await Navigator.pushNamed(
@@ -419,63 +404,41 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                             context.isDark ? colors.secondaryButton : kPurple,
                         icon: Icons.people_outline,
                         text: 'Pacientes',
-                        onTap: () {
-                          Navigator.pushNamed(
-                            context,
-                            PatientsListPage.route,
-                          );
-                        },
+                        onTap: () =>
+                            Navigator.pushNamed(context, PatientsListPage.route),
                       ),
                       _PillButton(
                         color:
                             context.isDark ? colors.secondaryButton : kPurple,
                         icon: Icons.menu_book_outlined,
                         text: 'Guías',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const QuickGuidesPage(),
-                            ),
-                          );
-                        },
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const QuickGuidesPage()),
+                        ),
                       ),
                       _PillButton(
-                        color:
-                            context.isDark ? colors.secondaryButton : kPurple,
+                        color: context.isDark
+                            ? colors.secondaryButton
+                            : kPurple,
                         icon: Icons.event_note_outlined,
                         text: 'Recuerdos',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const CalendarPage(),
-                            ),
-                          );
-                        },
-                      ),
-                      _PillButton(
-                        color:
-                            context.isDark ? colors.secondaryButton : kPurple,
-                        icon: Icons.alarm_rounded,
-                        text: 'Recordatorios',
-                        onTap: () {
-                          Navigator.pushNamed(context, '/reminders');
-                        },
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const CalendarPage()),
+                        ),
                       ),
                       _PillButton(
                         color:
                             context.isDark ? colors.secondaryButton : kPurple,
                         icon: Icons.chat_bubble_outline,
                         text: 'Asistente',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const AssistantPage(),
-                            ),
-                          );
-                        },
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const AssistantPage()),
+                        ),
                       ),
                       const SizedBox(height: 24),
                     ],
@@ -490,14 +453,9 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
               child: Padding(
                 padding: const EdgeInsets.only(left: 8, top: 4),
                 child: IconButton(
-                  icon: Icon(
-                    Icons.settings,
-                    color: colors.textPrimary,
-                    size: 28,
-                  ),
-                  onPressed: () {
-                    Navigator.pushNamed(context, '/settings');
-                  },
+                  icon:
+                      Icon(Icons.settings, color: colors.textPrimary, size: 28),
+                  onPressed: () => Navigator.pushNamed(context, '/settings'),
                   tooltip: 'Ajustes',
                 ),
               ),
