@@ -23,6 +23,7 @@ class HomeCaregiverPage extends StatefulWidget {
   const HomeCaregiverPage({super.key, this.displayName});
 
   static const route = '/home/caregiver';
+
   final String? displayName;
 
   @override
@@ -30,13 +31,12 @@ class HomeCaregiverPage extends StatefulWidget {
 }
 
 class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
-  int _notifCount = 0;
-  bool _loadingNotif = true;
   String? _lastAlertId;
 
   @override
   void initState() {
     super.initState();
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _initializeHome();
       _listenForEmergencyAlerts();
@@ -46,11 +46,12 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
   Future<void> _initializeHome() async {
     try {
       await NotificationsService.ensureInitialized();
+
       final uid = FirebaseAuth.instance.currentUser?.uid;
+
       if (uid != null) {
         await MemoriesScheduler.scheduleAllForUser(uid);
       }
-      await _loadNotifCount();
     } catch (e) {
       debugPrint('Error en inicialización del HomeCaregiver: $e');
     }
@@ -64,13 +65,12 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
           .update({'active': false});
 
       final pending = await NotificationsService.pendingNotificationRequests();
+
       for (final item in pending) {
         if (item.payload == 'emergency') {
           await NotificationsService.cancel(item.id);
         }
       }
-
-      await _loadNotifCount();
     } catch (e) {
       debugPrint('Error resolviendo emergencia: $e');
     }
@@ -78,6 +78,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
 
   void _listenForEmergencyAlerts() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
+
     if (uid == null) return;
 
     final emergenciesRef = FirebaseFirestore.instance
@@ -86,34 +87,45 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
         .where('active', isEqualTo: true)
         .orderBy('timestamp', descending: true);
 
-    emergenciesRef.snapshots(includeMetadataChanges: true).listen((snapshot) {
-      if (snapshot.docs.isEmpty) return;
+    emergenciesRef.snapshots(includeMetadataChanges: true).listen(
+      (snapshot) {
+        if (snapshot.docs.isEmpty) return;
 
-      for (final doc in snapshot.docs) {
-        final alertId = doc.id;
+        for (final doc in snapshot.docs) {
+          final alertId = doc.id;
 
-        if (_lastAlertId == alertId) continue;
-        _lastAlertId = alertId;
+          if (_lastAlertId == alertId) continue;
+
+          _lastAlertId = alertId;
 
         final data = doc.data();
         final consultantId = data['consultantId'] ?? '';
         final consultantName = data['consultantName'] ?? 'Consultante';
         final lat = data['lat'];
         final lng = data['lng'];
-        final title = data['title'] ?? 'Emergencia detectada';
+        final title = data['title'] ?? '🚨 Emergencia detectada';
         final body = data['body'] ?? '$consultantName necesita ayuda.';
 
         if (lat == null || lng == null) continue;
 
-        if (!kIsWeb) {
-          NotificationsService.showInstant(title: title, body: body);
-          Vibration.vibrate(duration: 1500, amplitude: 255);
-        }
+        debugPrint('🆘 Emergencia recibida en tiempo real para cuidador $uid');
 
-        if (!mounted) return;
+          if (!kIsWeb) {
+            NotificationsService.showInstant(
+              title: title,
+              body: body,
+            );
 
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final colors = context.appColors;
+            Vibration.vibrate(
+              duration: 1500,
+              amplitude: 255,
+            );
+          }
+
+          if (!mounted) return;
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final colors = context.appColors;
 
           final dialogBgTop = context.isDark
               ? const Color(0xFF3B2024)
@@ -124,8 +136,9 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
           final shadowColor = context.isDark
               ? Colors.black.withValues(alpha: 0.45)
               : Colors.black.withValues(alpha: 0.20);
-          final dangerAccent =
-              context.isDark ? const Color(0xFFFF8E8E) : Colors.red;
+          final dangerAccent = context.isDark
+              ? const Color(0xFFFF8E8E)
+              : Colors.red;
 
           showDialog(
             context: context,
@@ -147,7 +160,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                       color: shadowColor,
                       blurRadius: 22,
                       offset: const Offset(0, 8),
-                    ),
+                    )
                   ],
                   border: Border.all(
                     color: context.isDark
@@ -217,12 +230,10 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                       width: double.infinity,
                       height: 48,
                       child: ElevatedButton.icon(
-                        icon: const Icon(
-                          Icons.navigation_rounded,
-                          color: Colors.white,
-                        ),
+                        icon: const Icon(Icons.navigation_rounded,
+                            color: Colors.white),
                         label: const Text(
-                          'Abrir en Google Maps',
+                          "Abrir en Google Maps",
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 16,
@@ -243,10 +254,8 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                           final uri = Uri.parse(url);
 
                           if (await canLaunchUrl(uri)) {
-                            await launchUrl(
-                              uri,
-                              mode: LaunchMode.externalApplication,
-                            );
+                            await launchUrl(uri,
+                                mode: LaunchMode.externalApplication);
                           }
 
                           if (context.mounted) Navigator.pop(context);
@@ -261,7 +270,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                         await _resolveEmergency(alertId);
                       },
                       child: Text(
-                        'Cerrar',
+                        "Cerrar",
                         style: TextStyle(
                           color: colors.textPrimary,
                           fontSize: 15,
@@ -278,29 +287,17 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
         });
       }
     }, onError: (error) {
-      debugPrint('Error escuchando emergencias: $error');
+      debugPrint('⚠️ Error escuchando emergencias: $error');
     });
   }
 
-  Future<void> _loadNotifCount() async {
-    try {
-      final pending =
-          await NotificationsService.plugin.pendingNotificationRequests();
-      if (!mounted) return;
-      setState(() {
-        _notifCount = pending.length;
-        _loadingNotif = false;
-      });
-    } catch (e) {
-      debugPrint('Error al cargar notificaciones pendientes: $e');
-      if (!mounted) return;
-      setState(() => _loadingNotif = false);
-    }
-  }
+
 
   Future<void> _openNotifications() async {
-    await Navigator.pushNamed(context, NotificationsPage.route);
-    await _loadNotifCount();
+    await Navigator.pushNamed(
+      context,
+      NotificationsPage.route,
+    );
   }
 
   @override
@@ -327,7 +324,9 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                         builder: (context, authSnap) {
                           final user =
                               authSnap.data ?? FirebaseAuth.instance.currentUser;
+
                           if (user == null) return const SizedBox();
+
                           final uid = user.uid;
 
                           return StreamBuilder<
@@ -342,23 +341,34 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                               if (docSnap.hasData &&
                                   docSnap.data!.data() != null) {
                                 final data = docSnap.data!.data()!;
+
                                 final first =
-                                    (data['firstName'] as String?)?.trim() ?? '';
+                                    (data['firstName'] as String?)?.trim() ??
+                                        '';
+
                                 final last =
                                     (data['lastName'] as String?)?.trim() ?? '';
+
                                 final fsName = [first, last]
-                                    .where((e) => e.isNotEmpty)
+                                    .where((item) => item.isNotEmpty)
                                     .join(' ');
-                                if (fsName.isNotEmpty) name = fsName;
+
+                                if (fsName.isNotEmpty) {
+                                  name = fsName;
+                                }
                               }
 
                               if (name == 'Cuidador') {
                                 final dn = (user.displayName ?? '').trim();
-                                if (dn.isNotEmpty) name = dn;
+
+                                if (dn.isNotEmpty) {
+                                  name = dn;
+                                }
                               }
 
                               if (name == 'Cuidador') {
                                 final mail = user.email ?? '';
+
                                 if (mail.contains('@')) {
                                   name = mail.split('@').first;
                                 }
@@ -394,10 +404,8 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                             context.isDark ? colors.secondaryButton : kPurple,
                         icon: Icons.people_outline,
                         text: 'Pacientes',
-                        onTap: () => Navigator.pushNamed(
-                          context,
-                          PatientsListPage.route,
-                        ),
+                        onTap: () =>
+                            Navigator.pushNamed(context, PatientsListPage.route),
                       ),
                       _PillButton(
                         color:
@@ -407,41 +415,18 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const QuickGuidesPage(),
-                          ),
+                              builder: (_) => const QuickGuidesPage()),
                         ),
                       ),
                       _PillButton(
-                        color:
-                            context.isDark ? colors.secondaryButton : kPurple,
-                        icon: Icons.recommend_outlined,
-                        text: 'Recomendaciones',
-                        onTap: () => Navigator.pushNamed(
-                          context,
-                          '/recommendations',
-                        ),
-                      ),
-                      _PillButton(
-                        color:
-                            context.isDark ? colors.secondaryButton : kPurple,
-                        icon: Icons.contact_phone_outlined,
-                        text: 'Contactos de apoyo',
-                        onTap: () => Navigator.pushNamed(
-                          context,
-                          SupportContactsScreen.route,
-                        ),
-                      ),
-              
-                      _PillButton(
-                        color:
-                            context.isDark ? colors.secondaryButton : kPurple,
+                        color: context.isDark
+                            ? colors.secondaryButton
+                            : kPurple,
                         icon: Icons.event_note_outlined,
                         text: 'Recuerdos',
                         onTap: () => Navigator.push(
                           context,
-                          MaterialPageRoute(
-                            builder: (_) => const CalendarPage(),
-                          ),
+                          MaterialPageRoute(builder: (_) => const CalendarPage()),
                         ),
                       ),
                       _PillButton(
@@ -452,17 +437,7 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const AssistantPage(),
-                          ),
-                        ),
-                      ),
-                      _PillButton(
-                        color: colors.emergency,
-                        icon: Icons.emergency_share_rounded,
-                        text: 'Botón de pánico',
-                        onTap: () => Navigator.pushNamed(
-                          context,
-                          PanicButtonPage.route,
+                              builder: (_) => const AssistantPage()),
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -478,11 +453,8 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
               child: Padding(
                 padding: const EdgeInsets.only(left: 8, top: 4),
                 child: IconButton(
-                  icon: Icon(
-                    Icons.settings,
-                    color: colors.textPrimary,
-                    size: 28,
-                  ),
+                  icon:
+                      Icon(Icons.settings, color: colors.textPrimary, size: 28),
                   onPressed: () => Navigator.pushNamed(context, '/settings'),
                   tooltip: 'Ajustes',
                 ),
@@ -494,10 +466,22 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
               alignment: Alignment.topRight,
               child: Padding(
                 padding: const EdgeInsets.only(right: 8, top: 4),
-                child: _NotificationBell(
-                  count: _notifCount,
-                  loading: _loadingNotif,
-                  onTap: _openNotifications,
+                child: StreamBuilder<int>(
+                  stream:
+                      NotificationsService.watchUnreadAppNotificationCount(),
+                  builder: (context, snapshot) {
+                    final loading =
+                        snapshot.connectionState == ConnectionState.waiting &&
+                            !snapshot.hasData;
+
+                    final count = snapshot.data ?? 0;
+
+                    return _NotificationBell(
+                      count: count,
+                      loading: loading,
+                      onTap: _openNotifications,
+                    );
+                  },
                 ),
               ),
             ),
@@ -556,12 +540,18 @@ class _NotificationBell extends StatelessWidget {
             right: 6,
             top: 6,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 2,
+              ),
               decoration: BoxDecoration(
                 color: context.isDark ? const Color(0xFFC35B5B) : Colors.red,
                 borderRadius: BorderRadius.circular(12),
               ),
-              constraints: const BoxConstraints(minWidth: 20, minHeight: 18),
+              constraints: const BoxConstraints(
+                minWidth: 20,
+                minHeight: 18,
+              ),
               alignment: Alignment.center,
               child: Text(
                 display,
@@ -612,7 +602,11 @@ class _PillButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 24, color: buttonTextColor),
+              Icon(
+                icon,
+                size: 24,
+                color: buttonTextColor,
+              ),
               const SizedBox(width: 12),
               Text(
                 text,

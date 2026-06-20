@@ -1,18 +1,13 @@
 // lib/src/features/profile/presentation/pages/settings_page.dart
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:whoami_app/src/core/services/fcm_token_service.dart';
-
 import 'package:whoami_app/src/features/auth/presentation/pages/choice_start.dart';
 import 'package:whoami_app/src/core/widgets/user_avatar.dart';
 import 'package:whoami_app/src/core/theme/app_theme.dart';
-
-// HU-03
 import 'package:whoami_app/src/core/accessibility/accessibility_controller.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -32,6 +27,71 @@ class _SettingsPageState extends State<SettingsPage> {
   String? get _uid => _user?.uid;
 
   bool _showTrashAnim = false;
+
+  Future<void> _goBackHome() async {
+  final uid = _uid;
+
+  if (uid == null) {
+    if (!mounted) return;
+
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      '/login',
+      (route) => false,
+    );
+    return;
+  }
+
+  try {
+    final doc = await _db.collection('users').doc(uid).get();
+    final data = doc.data() ?? {};
+    final role = (data['role'] ?? '').toString().trim();
+
+    if (!mounted) return;
+
+    final route = role == 'Consultante'
+        ? '/home/consultant'
+        : '/home/caregiver';
+
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      route,
+      (route) => false,
+    );
+  } catch (_) {
+    if (!mounted) return;
+
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      '/',
+      (route) => false,
+    );
+  }
+}
+  Future<void> _logout() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/login',
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      final colors = context.appColors;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: colors.elevatedCard,
+          content: Text(
+            'Error al cerrar sesión: $e',
+            style: TextStyle(color: colors.textPrimary),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
 
   Future<void> _deleteAccount(BuildContext context) async {
     if (_uid == null || _user == null) return;
@@ -63,120 +123,126 @@ class _SettingsPageState extends State<SettingsPage> {
         String? errorText;
         bool verifying = false;
 
-        return StatefulBuilder(builder: (context, setState) {
-          return AlertDialog(
-            backgroundColor: colors.elevatedCard,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: Text(
-              '¿Eliminar cuenta?',
-              style: TextStyle(
-                color: colors.textPrimary,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              backgroundColor: colors.elevatedCard,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
               ),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$message\n\nPor seguridad, ingresa tu contraseña para confirmar.',
-                  style: TextStyle(color: colors.textPrimary),
+              title: Text(
+                '¿Eliminar cuenta?',
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
                 ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: passCtrl,
-                  obscureText: obscure,
-                  style: TextStyle(color: colors.textPrimary),
-                  decoration: InputDecoration(
-                    labelText: 'Contraseña',
-                    labelStyle: TextStyle(color: colors.textPrimary),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        obscure
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                        color: colors.textSecondary,
-                      ),
-                      onPressed: () => setState(() => obscure = !obscure),
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                if (errorText != null) ...[
-                  const SizedBox(height: 6),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    errorText!,
-                    style: TextStyle(
-                      color: colors.emergency,
-                      fontSize: 13,
+                    '$message\n\nPor seguridad, ingresa tu contraseña para confirmar.',
+                    style: TextStyle(color: colors.textPrimary),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: passCtrl,
+                    obscureText: obscure,
+                    style: TextStyle(color: colors.textPrimary),
+                    decoration: InputDecoration(
+                      labelText: 'Contraseña',
+                      labelStyle: TextStyle(color: colors.textPrimary),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          obscure
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          color: colors.textSecondary,
+                        ),
+                        onPressed: () => setState(() => obscure = !obscure),
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
+                  if (errorText != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      errorText!,
+                      style: TextStyle(
+                        color: colors.emergency,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
-            ),
-            actionsAlignment: MainAxisAlignment.center,
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                style: TextButton.styleFrom(
-                  backgroundColor: colors.secondaryButton,
-                  foregroundColor: colors.secondaryButtonText,
-                ),
-                child: const Text('Cancelar'),
               ),
-              TextButton(
-                onPressed: verifying
-                    ? null
-                    : () async {
-                        final password = passCtrl.text.trim();
-                        if (password.isEmpty) {
-                          setState(() =>
-                              errorText = 'Por favor, ingresa tu contraseña.');
-                          return;
-                        }
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: TextButton.styleFrom(
+                    backgroundColor: colors.secondaryButton,
+                    foregroundColor: colors.secondaryButtonText,
+                  ),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: verifying
+                      ? null
+                      : () async {
+                          final password = passCtrl.text.trim();
 
-                        setState(() {
-                          verifying = true;
-                          errorText = null;
-                        });
+                          if (password.isEmpty) {
+                            setState(() {
+                              errorText = 'Por favor, ingresa tu contraseña.';
+                            });
+                            return;
+                          }
 
-                        try {
-                          final cred = EmailAuthProvider.credential(
-                            email: _user!.email!,
-                            password: password,
-                          );
-                          await _user!.reauthenticateWithCredential(cred);
-                          if (ctx.mounted) Navigator.pop(ctx, true);
-                        } catch (_) {
                           setState(() {
-                            errorText = 'Contraseña incorrecta.';
-                            verifying = false;
+                            verifying = true;
+                            errorText = null;
                           });
-                        }
-                      },
-                style: TextButton.styleFrom(
-                  backgroundColor: colors.emergency,
-                  foregroundColor: colors.emergencyText,
+
+                          try {
+                            final cred = EmailAuthProvider.credential(
+                              email: _user!.email!,
+                              password: password,
+                            );
+
+                            await _user!.reauthenticateWithCredential(cred);
+
+                            if (ctx.mounted) Navigator.pop(ctx, true);
+                          } catch (_) {
+                            setState(() {
+                              errorText = 'Contraseña incorrecta.';
+                              verifying = false;
+                            });
+                          }
+                        },
+                  style: TextButton.styleFrom(
+                    backgroundColor: colors.emergency,
+                    foregroundColor: colors.emergencyText,
+                  ),
+                  child: verifying
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: colors.emergencyText,
+                          ),
+                        )
+                      : const Text('Eliminar cuenta'),
                 ),
-                child: verifying
-                    ? SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: colors.emergencyText,
-                        ),
-                      )
-                    : const Text('Eliminar cuenta'),
-              ),
-            ],
-          );
-        });
+              ],
+            );
+          },
+        );
       },
     );
 
@@ -188,6 +254,7 @@ class _SettingsPageState extends State<SettingsPage> {
             .collection('users')
             .where('caregiverId', isEqualTo: _uid)
             .get();
+
         for (var doc in patients.docs) {
           await doc.reference.update({'caregiverId': null});
         }
@@ -206,57 +273,59 @@ class _SettingsPageState extends State<SettingsPage> {
 
       setState(() => _showTrashAnim = true);
       await Future.delayed(const Duration(seconds: 3));
+
+      if (!mounted) return;
+
       setState(() => _showTrashAnim = false);
 
-      if (mounted) {
-        await showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => AlertDialog(
-            backgroundColor: colors.elevatedCard,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: Text(
-              'Cuenta eliminada',
-              style: TextStyle(
-                color: colors.textPrimary,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
-            content: Text(
-              'Tu cuenta ha sido eliminada correctamente.',
-              style: TextStyle(color: colors.textPrimary),
-            ),
-            actionsAlignment: MainAxisAlignment.center,
-            actions: [
-              TextButton(
-                style: TextButton.styleFrom(
-                  backgroundColor: colors.primaryButton,
-                  foregroundColor: colors.primaryButtonText,
-                ),
-                onPressed: () async {
-                  Navigator.of(context).pop();
-
-                  await FirebaseAuth.instance.signOut();
-
-                  if (context.mounted) {
-                    Navigator.pushNamedAndRemoveUntil(
-                      context,
-                      ChoiceStart.route,
-                      (_) => false,
-                    );
-                  }
-                },
-                child: const Text('Aceptar'),
-              ),
-            ],
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          backgroundColor: colors.elevatedCard,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
           ),
-        );
-      }
+          title: Text(
+            'Cuenta eliminada',
+            style: TextStyle(
+              color: colors.textPrimary,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+          content: Text(
+            'Tu cuenta ha sido eliminada correctamente.',
+            style: TextStyle(color: colors.textPrimary),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              style: TextButton.styleFrom(
+                backgroundColor: colors.primaryButton,
+                foregroundColor: colors.primaryButtonText,
+              ),
+              onPressed: () async {
+                Navigator.of(context).pop();
+
+                await FirebaseAuth.instance.signOut();
+
+                if (context.mounted) {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    ChoiceStart.route,
+                    (_) => false,
+                  );
+                }
+              },
+              child: const Text('Aceptar'),
+            ),
+          ],
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: colors.elevatedCard,
@@ -277,7 +346,11 @@ class _SettingsPageState extends State<SettingsPage> {
         _buildMainUI(context),
         if (_showTrashAnim)
           AnimatedTrashAnimation(
-            onDone: () => setState(() => _showTrashAnim = false),
+            onDone: () {
+              if (mounted) {
+                setState(() => _showTrashAnim = false);
+              }
+            },
           ),
       ],
     );
@@ -294,7 +367,7 @@ class _SettingsPageState extends State<SettingsPage> {
         backgroundColor: colors.pageBackground,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          onPressed: () => Navigator.maybePop(context),
+          onPressed: _goBackHome,
           icon: Icon(Icons.arrow_back_rounded, color: colors.textPrimary),
         ),
         title: Text(
@@ -337,7 +410,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       final role = (me['role'] as String?)?.trim() ?? '';
                       final firstName =
                           (me['firstName'] as String?)?.trim() ?? '';
-                      final lastName = (me['lastName'] as String?)?.trim() ?? '';
+                      final lastName =
+                          (me['lastName'] as String?)?.trim() ?? '';
                       final caregiverId = me['caregiverId'] as String?;
                       final myName = [firstName, lastName]
                           .where((e) => e.isNotEmpty)
@@ -584,6 +658,7 @@ class _SettingsPageState extends State<SettingsPage> {
         if (!snap.hasData) {
           return CircularProgressIndicator(color: colors.primaryButton);
         }
+
         final data = snap.data!.data() as Map<String, dynamic>?;
         final name = data != null
             ? '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'.trim()
@@ -627,6 +702,7 @@ class _SettingsPageState extends State<SettingsPage> {
         if (!snap.hasData) {
           return CircularProgressIndicator(color: colors.primaryButton);
         }
+
         final patients = snap.data!.docs;
 
         final bg = context.isDark
@@ -700,8 +776,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 borderRadius: BorderRadius.circular(28),
               ),
             ),
-            onPressed: () =>
-                Navigator.pushNamed(context, '/settings/edit-profile'),
+            onPressed: () {
+              Navigator.pushNamed(context, '/settings/edit-profile');
+            },
             icon: const Icon(Icons.person_outline),
             label: const Text('Perfil'),
           ),
@@ -718,37 +795,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 borderRadius: BorderRadius.circular(28),
               ),
             ),
-            onPressed: () async {
-              try {
-                if (!kIsWeb) {
-                  try {
-                    await FCMTokenService.unregisterCurrentDeviceToken();
-                  } catch (_) {}
-                }
-
-                await FirebaseAuth.instance.signOut();
-
-                if (!mounted) return;
-
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  '/login',
-                  (_) => false,
-                );
-              } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    backgroundColor: colors.elevatedCard,
-                    content: Text(
-                      'Error al cerrar sesión: $e',
-                      style: TextStyle(color: colors.textPrimary),
-                    ),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            },
+            onPressed: _logout,
             icon: const Icon(Icons.logout),
             label: const Text('Cerrar sesión'),
           ),
@@ -777,7 +824,11 @@ class _SettingsPageState extends State<SettingsPage> {
 
 class AnimatedTrashAnimation extends StatefulWidget {
   final VoidCallback onDone;
-  const AnimatedTrashAnimation({super.key, required this.onDone});
+
+  const AnimatedTrashAnimation({
+    super.key,
+    required this.onDone,
+  });
 
   @override
   State<AnimatedTrashAnimation> createState() => _AnimatedTrashAnimationState();
@@ -792,14 +843,20 @@ class _AnimatedTrashAnimationState extends State<AnimatedTrashAnimation>
   @override
   void initState() {
     super.initState();
-    _controller =
-        AnimationController(vsync: this, duration: const Duration(seconds: 3));
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    );
+
     _paperAnim = Tween<double>(begin: -1, end: 0.2).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
+
     _lidAnim = Tween<double>(begin: 0, end: -0.5).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOutBack),
     );
+
     _controller.forward().whenComplete(widget.onDone);
   }
 

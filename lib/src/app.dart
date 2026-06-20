@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:provider/provider.dart';
 
 import 'package:whoami_app/src/core/accessibility/accessibility_controller.dart';
 import 'package:whoami_app/src/core/accessibility/accessibility_service.dart';
@@ -29,12 +30,19 @@ import 'package:whoami_app/src/features/patients/presentation/pages/patients_lis
 import 'package:whoami_app/src/features/games/presentation/pages/game_page.dart';
 import 'package:whoami_app/src/features/games/presentation/pages/memorama_page.dart';
 
+import 'package:whoami_app/src/features/notifications/data/notifications_service.dart';
 import 'package:whoami_app/src/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
 
+<<<<<<< HEAD
+import 'package:whoami_app/src/features/reminders/presentation/pages/reminders_page.dart';
+import 'package:whoami_app/src/features/reminders/presentation/pages/reminder_alarm_page.dart';
+import 'package:whoami_app/src/features/reminders/presentation/providers/reminder_provider.dart';
+=======
 import 'package:whoami_app/src/features/recommendations/presentation/recommendations_screen.dart';
 import 'package:whoami_app/src/features/support_contacts/presentation/support_contacts_screen.dart';
 import 'package:whoami_app/src/features/emergency/presentation/pages/panic_button_page.dart';
+>>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
 
 class WhoAmIApp extends StatefulWidget {
   const WhoAmIApp({super.key});
@@ -49,24 +57,9 @@ class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
 
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
-  // ============================================================
-  // HU-15 - Control de uso prolongado progresivo
-  //
-  // PRUEBA:
-  // Avisará cada 20 segundos:
-  // 20s, 40s, 60s, 80s...
-  //
-  // PRODUCCIÓN:
-  // Cuando ya quede probado, cambia:
-  // Duration(seconds: 20)
-  // por:
-  // Duration(minutes: 30)
-  //
-  // Así avisará:
-  // 30 min, 1 hora, 1 hora 30 min, 2 horas...
-  // ============================================================
-  static const Duration _progressiveReminderStep = Duration(minutes: 30);
-  static const Duration _checkInterval = Duration(seconds: 5);
+  // HU-15 temporalmente ajustado para evitar bloqueos mientras probamos HU-05.
+  static const Duration _progressiveReminderStep = Duration(hours: 24);
+  static const Duration _checkInterval = Duration(minutes: 30);
 
   Timer? _usageTimer;
   DateTime? _usageStartedAt;
@@ -80,7 +73,6 @@ class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
 
     a11y = AccessibilityController(AccessibilityService());
-
     unawaited(_loadAccessibility());
 
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
@@ -101,9 +93,11 @@ class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
   Future<void> _loadAccessibility() async {
     try {
       await a11y.init();
+<<<<<<< HEAD
     } catch (_) {
-      // Evita que la app se caiga si hay error leyendo preferencias.
-    }
+      // Evita que la app se cierre si hay error leyendo preferencias.
+=======
+    } catch (_) {}
   }
 
   void _startUsageControl() {
@@ -149,6 +143,7 @@ class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
     final context = _navigatorKey.currentContext;
 
     if (context == null) return;
+    if (!mounted) return;
 
     _breakDialogVisible = true;
 
@@ -241,6 +236,7 @@ class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed &&
         FirebaseAuth.instance.currentUser != null) {
       _resetUsageControl();
+>>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
     }
   }
 
@@ -255,13 +251,59 @@ class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: a11y,
-      builder: (context, _) {
-        final s = a11y.settings;
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ReminderProvider>(
+          create: (_) => ReminderProvider(),
+        ),
+      ],
+      child: AnimatedBuilder(
+        animation: a11y,
+        builder: (context, _) {
+          final s = a11y.settings;
 
-        const seed = kBlue;
+          const seed = kBlue;
 
+<<<<<<< HEAD
+          return MaterialApp(
+            navigatorKey: NotificationsService.navigatorKey,
+            debugShowCheckedModeBanner: false,
+            title: 'WhoAmI?',
+            theme: buildAppTheme(
+              seedColor: seed,
+              darkMode: false,
+              simplified: s.simplified,
+            ),
+            darkTheme: buildAppTheme(
+              seedColor: seed,
+              darkMode: true,
+              simplified: s.simplified,
+            ),
+            themeMode: s.darkMode ? ThemeMode.dark : ThemeMode.light,
+            supportedLocales: const [
+              Locale('es'),
+              Locale('es', 'MX'),
+              Locale('en'),
+            ],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            locale: const Locale('es', 'MX'),
+            builder: (context, child) {
+              final mq = MediaQuery.of(context);
+
+              return MediaQuery(
+                data: mq.copyWith(
+                  textScaler: TextScaler.linear(s.textScale),
+                ),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                  child: child ?? const SizedBox.shrink(),
+                ),
+=======
         return MaterialApp(
           navigatorKey: _navigatorKey,
           debugShowCheckedModeBanner: false,
@@ -318,9 +360,62 @@ class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
 
               return HomeCaregiverPage(
                 displayName: args?['name'] as String?,
+>>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
               );
             },
+            initialRoute: '/',
+            routes: {
+              '/': (_) => const AuthGate(),
 
+<<<<<<< HEAD
+              '/auth/choice': (_) => const ChoiceStart(),
+              '/login': (_) => const LoginPage(),
+
+              '/register/name': (_) => const RegisterNamePage(),
+              '/register/password': (_) => const RegisterPasswordPage(),
+              '/register/role': (_) => const RegisterRolePage(),
+
+              '/home/caregiver': (ctx) {
+                final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
+                return HomeCaregiverPage(
+                  displayName: args?['name'] as String?,
+                );
+              },
+
+              '/home/consultant': (ctx) {
+                final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
+                return HomeConsultantPage(
+                  displayName: args?['name'] as String?,
+                );
+              },
+
+              '/settings': (_) => SettingsPage(a11y: a11y),
+              '/settings/edit-profile': (_) => const EditProfilePage(),
+
+              PatientsListPage.route: (_) => const PatientsListPage(),
+              RegisterPatientPage.route: (_) => const RegisterPatientPage(),
+
+              GamesPage.route: (_) => const GamesPage(),
+              MemoramaPage.route: (_) => const MemoramaPage(),
+
+              NotificationsPage.route: (_) => const NotificationsPage(),
+              AssistantPage.route: (_) => const AssistantPage(),
+
+              '/reminders': (_) => const RemindersPage(),
+
+              ReminderAlarmPage.route: (ctx) {
+                final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
+
+                return ReminderAlarmPage(
+                  title: args?['title'] as String? ?? 'Recordatorio',
+                  description: args?['description'] as String?,
+                );
+              },
+            },
+          );
+        },
+      ),
+=======
             '/home/consultant': (ctx) {
               final args = ModalRoute.of(ctx)?.settings.arguments as Map?;
 
@@ -347,6 +442,7 @@ class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
           },
         );
       },
+>>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
     );
   }
 }
