@@ -49,24 +49,9 @@ class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
 
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
-  // ============================================================
-  // HU-15 - Control de uso prolongado progresivo
-  //
-  // PRUEBA:
-  // Avisará cada 20 segundos:
-  // 20s, 40s, 60s, 80s...
-  //
-  // PRODUCCIÓN:
-  // Cuando ya quede probado, cambia:
-  // Duration(seconds: 20)
-  // por:
-  // Duration(minutes: 30)
-  //
-  // Así avisará:
-  // 30 min, 1 hora, 1 hora 30 min, 2 horas...
-  // ============================================================
-  static const Duration _progressiveReminderStep = Duration(minutes: 30);
-  static const Duration _checkInterval = Duration(seconds: 5);
+  // HU-15 temporalmente ajustado para evitar bloqueos mientras probamos HU-05.
+  static const Duration _progressiveReminderStep = Duration(hours: 24);
+  static const Duration _checkInterval = Duration(minutes: 30);
 
   Timer? _usageTimer;
   DateTime? _usageStartedAt;
@@ -80,7 +65,6 @@ class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
 
     a11y = AccessibilityController(AccessibilityService());
-
     unawaited(_loadAccessibility());
 
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
@@ -101,9 +85,7 @@ class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
   Future<void> _loadAccessibility() async {
     try {
       await a11y.init();
-    } catch (_) {
-      // Evita que la app se caiga si hay error leyendo preferencias.
-    }
+    } catch (_) {}
   }
 
   void _startUsageControl() {
@@ -149,6 +131,7 @@ class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
     final context = _navigatorKey.currentContext;
 
     if (context == null) return;
+    if (!mounted) return;
 
     _breakDialogVisible = true;
 

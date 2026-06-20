@@ -33,7 +33,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   String? _photoUrl;
   File? _localPhoto;
 
-  late Map<String, String?> _original;
+  Map<String, String?> _original = {};
 
   @override
   void initState() {
@@ -146,11 +146,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
   Future<void> _handleBackNavigation() async {
     final canLeave = await _confirmBeforeLeave();
 
-    if (!mounted) return;
+    if (!mounted || !canLeave) return;
 
-    if (canLeave) {
-      Navigator.maybePop(context);
-    }
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      '/settings',
+      (route) => false,
+    );
   }
 
   String _fmt(DateTime date) {
@@ -164,16 +165,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
     try {
       if (raw is Timestamp) return raw.toDate();
-    } catch (_) {
-      // Se ignora para continuar intentando otros formatos válidos.
-    }
+    } catch (_) {}
 
     if (raw is int) {
       try {
         return DateTime.fromMillisecondsSinceEpoch(raw);
-      } catch (_) {
-        // Se ignora para continuar intentando otros formatos válidos.
-      }
+      } catch (_) {}
     }
 
     if (raw is String) {
@@ -212,9 +209,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final hasHadBirthdayThisYear = now.month > birthDate.month ||
         (now.month == birthDate.month && now.day >= birthDate.day);
 
-    if (!hasHadBirthdayThisYear) {
-      age--;
-    }
+    if (!hasHadBirthdayThisYear) age--;
 
     return age < 0 ? 0 : age;
   }
@@ -231,47 +226,62 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   Future<void> _load() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
 
-    final snap =
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    if (user == null) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
 
-    final data = snap.data() ?? <String, dynamic>{};
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
 
-    _firstName.text = _safeString(data['firstName']);
-    _lastName.text = _safeString(data['lastName']);
-    _email.text = _safeString(data['email']).isNotEmpty
-        ? _safeString(data['email'])
-        : (user.email ?? '');
-    _phoneCtrl.text = _safeString(data['phone']);
-    _addressCtrl.text = _safeString(data['address']);
+      final data = snap.data() ?? <String, dynamic>{};
 
-    _photoUrl = _safeString(data['photoURL']).isNotEmpty
-        ? _safeString(data['photoURL'])
-        : user.photoURL;
+      _firstName.text = _safeString(data['firstName']);
+      _lastName.text = _safeString(data['lastName']);
+      _email.text = _safeString(data['email']).isNotEmpty
+          ? _safeString(data['email'])
+          : (user.email ?? '');
+      _phoneCtrl.text = _safeString(data['phone']);
+      _addressCtrl.text = _safeString(data['address']);
 
-    final rawDob =
-        data['birthDate'] ?? data['birthday'] ?? data['dob'] ?? data['dateOfBirth'];
+      _photoUrl = _safeString(data['photoURL']).isNotEmpty
+          ? _safeString(data['photoURL'])
+          : user.photoURL;
 
-    _birthDate = _parseBirthDate(rawDob);
-    _dobCtrl.text = _birthDate == null ? '' : _fmt(_birthDate!);
-    _updateAgeController();
+      final rawDob = data['birthDate'] ??
+          data['birthday'] ??
+          data['dob'] ??
+          data['dateOfBirth'];
 
-    _original = {
-      'firstName': _firstName.text,
-      'lastName': _lastName.text,
-      'email': _email.text,
-      'photo': _photoUrl,
-      'birthDate': _birthDate?.toIso8601String(),
-      'phone': _phoneCtrl.text,
-      'address': _addressCtrl.text,
-    };
+      _birthDate = _parseBirthDate(rawDob);
+      _dobCtrl.text = _birthDate == null ? '' : _fmt(_birthDate!);
+      _updateAgeController();
 
-    _localPhoto = null;
-    _dirty = false;
+      _original = {
+        'firstName': _firstName.text,
+        'lastName': _lastName.text,
+        'email': _email.text,
+        'photo': _photoUrl,
+        'birthDate': _birthDate?.toIso8601String(),
+        'phone': _phoneCtrl.text,
+        'address': _addressCtrl.text,
+      };
 
-    if (mounted) {
-      setState(() => _loading = false);
+      _localPhoto = null;
+      _dirty = false;
+    } catch (_) {
+      await _showDialogOk(
+        title: 'Error',
+        message: 'No se pudo cargar la información del perfil.',
+        icon: Icons.error_outline,
+        success: false,
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -310,9 +320,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _localPhoto = null;
     _dirty = false;
 
-    if (mounted) {
-      setState(() {});
-    }
+    if (mounted) setState(() {});
   }
 
   Future<void> _pickBirthDate() async {
@@ -444,10 +452,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ),
               Divider(height: 20, color: colors.border),
               ListTile(
-                leading: Icon(
-                  Icons.visibility_outlined,
-                  color: colors.textPrimary,
-                ),
+                leading: Icon(Icons.visibility_outlined,
+                    color: colors.textPrimary),
                 title: Text(
                   'Ver foto actual',
                   style: TextStyle(
@@ -461,10 +467,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 },
               ),
               ListTile(
-                leading: Icon(
-                  Icons.camera_alt_outlined,
-                  color: colors.textPrimary,
-                ),
+                leading:
+                    Icon(Icons.camera_alt_outlined, color: colors.textPrimary),
                 title: Text(
                   'Tomar foto',
                   style: TextStyle(color: colors.textPrimary),
@@ -484,10 +488,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 },
               ),
               ListTile(
-                leading: Icon(
-                  Icons.photo_outlined,
-                  color: colors.textPrimary,
-                ),
+                leading: Icon(Icons.photo_outlined, color: colors.textPrimary),
                 title: Text(
                   'Elegir de galería',
                   style: TextStyle(color: colors.textPrimary),
@@ -716,8 +717,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
       );
 
       await user.reauthenticateWithCredential(credential);
-
-      // Firebase recomienda verificar el nuevo correo antes de actualizarlo.
       await user.verifyBeforeUpdateEmail(newEmail);
 
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
@@ -743,7 +742,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
       } else if (e.code == 'requires-recent-login') {
         message = 'Debes volver a iniciar sesión antes de cambiar tu correo.';
       } else if (e.code == 'operation-not-allowed') {
-        message = 'El cambio de correo no está habilitado para este método de inicio de sesión.';
+        message =
+            'El cambio de correo no está habilitado para este método de inicio de sesión.';
       }
 
       await _showDialogOk(
@@ -755,7 +755,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
     } catch (_) {
       await _showDialogOk(
         title: 'Error',
-        message: 'Ocurrió un problema inesperado al solicitar el cambio de correo.',
+        message:
+            'Ocurrió un problema inesperado al solicitar el cambio de correo.',
         icon: Icons.error_outline,
         success: false,
       );
@@ -786,7 +787,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
     setState(() => _saving = true);
 
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+
+    if (user == null) {
+      if (mounted) setState(() => _saving = false);
+      return;
+    }
 
     try {
       if (_localPhoto != null) {
@@ -840,9 +845,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       _localPhoto = null;
       _dirty = false;
 
-      if (mounted) {
-        setState(() {});
-      }
+      if (mounted) setState(() {});
 
       await _showDialogOk(
         title: 'Listo',
@@ -851,7 +854,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
       );
 
       if (exitAfter && mounted) {
-        Navigator.maybePop(context);
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/settings',
+          (route) => false,
+        );
       }
     } catch (_) {
       await _showDialogOk(
@@ -861,9 +867,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         success: false,
       );
     } finally {
-      if (mounted) {
-        setState(() => _saving = false);
-      }
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -908,8 +912,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
     return FilledButton.icon(
       onPressed: onPressed,
-      icon: Icon(
-        icon,
+      icon: const Icon(
+        Icons.visibility_outlined,
         color: Colors.black,
         size: 20,
       ),
