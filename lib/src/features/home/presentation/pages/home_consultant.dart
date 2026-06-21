@@ -8,21 +8,18 @@ import 'package:whoami_app/src/core/theme/app_theme.dart';
 import 'package:whoami_app/src/core/widgets/user_avatar.dart';
 
 // Vistas
-import 'package:whoami_app/src/features/tips/presentation/pages/tips_page.dart';
 import 'package:whoami_app/src/features/memories/presentation/pages/calendar_page.dart';
 import 'package:whoami_app/src/features/games/presentation/pages/game_page.dart'
     as games;
 import 'package:whoami_app/src/features/phrases/presentation/pages/motivational_phrases_page.dart';
 import 'package:whoami_app/src/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
+import 'package:whoami_app/src/features/preventive_info/presentation/preventive_info_screen.dart';
 
 // Servicios
 import 'package:whoami_app/src/features/memories/data/memories_scheduler.dart';
 import 'package:whoami_app/src/features/notifications/data/notifications_service.dart';
 
-/// =============================================================
-/// HomeConsultantPage (Consultante) — FINAL con emergencias agrupadas
-/// =============================================================
 class HomeConsultantPage extends StatefulWidget {
   const HomeConsultantPage({super.key, this.displayName});
   static const route = '/home/consultant';
@@ -406,15 +403,6 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                     const SizedBox(height: 20),
                     _PillButton(
                       color: context.isDark ? colors.primaryButton : kBlue,
-                      icon: Icons.menu_book_outlined,
-                      text: 'Consejos',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const TipsPage()),
-                      ),
-                    ),
-                    _PillButton(
-                      color: context.isDark ? colors.primaryButton : kBlue,
                       icon: Icons.auto_stories_outlined,
                       text: 'Frases',
                       onTap: () => Navigator.push(
@@ -422,6 +410,17 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                         MaterialPageRoute(
                           builder: (_) => const MotivationalPhrasesPage(),
                         ),
+                      ),
+                    ),
+                    _PillButton(
+                      color: context.isDark
+                          ? colors.primaryButton
+                          : kBlue,
+                      icon: Icons.health_and_safety_outlined,
+                      text: 'Información preventiva',
+                      onTap: () => Navigator.pushNamed(
+                        context,
+                        PreventiveInfoScreen.route,
                       ),
                     ),
                     _PillButton(

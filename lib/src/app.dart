@@ -33,6 +33,7 @@ import 'package:whoami_app/src/features/notifications/presentation/pages/notific
 import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
 
 import 'package:whoami_app/src/features/recommendations/presentation/recommendations_screen.dart';
+import 'package:whoami_app/src/features/preventive_info/presentation/preventive_info_screen.dart';
 import 'package:whoami_app/src/features/support_contacts/presentation/support_contacts_screen.dart';
 import 'package:whoami_app/src/features/emergency/presentation/pages/panic_button_page.dart';
 
@@ -49,7 +50,6 @@ class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
 
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
-  // HU-15 temporalmente ajustado para evitar bloqueos mientras probamos HU-05.
   static const Duration _progressiveReminderStep = Duration(hours: 24);
   static const Duration _checkInterval = Duration(minutes: 30);
 
@@ -325,6 +325,7 @@ class _WhoAmIAppState extends State<WhoAmIApp> with WidgetsBindingObserver {
             AssistantPage.route: (_) => const AssistantPage(),
 
             '/recommendations': (_) => const RecommendationsScreen(),
+            PreventiveInfoScreen.route: (_) => const PreventiveInfoScreen(),
             SupportContactsScreen.route: (_) => const SupportContactsScreen(),
             PanicButtonPage.route: (_) => const PanicButtonPage(),
           },

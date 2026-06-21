@@ -18,6 +18,7 @@ import 'package:whoami_app/src/features/support_contacts/presentation/support_co
 
 import 'package:whoami_app/src/features/memories/data/memories_scheduler.dart';
 import 'package:whoami_app/src/features/notifications/data/notifications_service.dart';
+import 'package:whoami_app/src/features/preventive_info/presentation/preventive_info_screen.dart';
 
 class HomeCaregiverPage extends StatefulWidget {
   const HomeCaregiverPage({super.key, this.displayName});
@@ -419,6 +420,16 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
                         onTap: () => Navigator.pushNamed(
                           context,
                           '/recommendations',
+                        ),
+                      ),
+                      _PillButton(
+                        color: 
+                            context.isDark ? colors.secondaryButton : kPurple,
+                        icon: Icons.health_and_safety_outlined,
+                        text: 'Información preventiva',
+                        onTap: () => Navigator.pushNamed(
+                          context,
+                          PreventiveInfoScreen.route,
                         ),
                       ),
                       _PillButton(
