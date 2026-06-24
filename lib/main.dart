@@ -1,9 +1,11 @@
-import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
 import 'src/app.dart';
-import 'package:whoami_app/src/features/notifications/data/notifications_service.dart';
+import 'src/features/memories/data/memories_scheduler.dart';
+import 'src/features/notifications/data/notifications_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,16 +16,26 @@ Future<void> main() async {
     );
 
     await NotificationsService.init();
-  } catch (e, st) {
-    debugPrint('Error al inicializar: $e');
-    debugPrint(st.toString());
+
+    final currentUser =
+        FirebaseAuth.instance.currentUser;
+
+    if (currentUser != null) {
+      await MemoriesScheduler.scheduleAllForUser(
+        currentUser.uid,
+      );
+    }
+  } catch (error, stackTrace) {
+    debugPrint(
+      'Error durante la inicialización de la aplicación: $error',
+    );
+
+    debugPrint(
+      stackTrace.toString(),
+    );
   }
 
-  runApp(const WhoAmIApp());
+  runApp(
+    const WhoAmIApp(),
+  );
 }
-
-
-
-
-
-

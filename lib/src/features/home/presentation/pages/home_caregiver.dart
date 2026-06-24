@@ -1,297 +1,199 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:vibration/vibration.dart';
+import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:vibration/vibration.dart';
 
 import 'package:whoami_app/src/core/theme/app_theme.dart';
-import 'package:whoami_app/src/core/widgets/user_avatar.dart';
-import 'package:whoami_app/src/features/tips/presentation/pages/quick_guides_page.dart';
-import 'package:whoami_app/src/features/patients/presentation/pages/patients_list_page.dart';
-import 'package:whoami_app/src/features/memories/presentation/pages/calendar_page.dart';
-import 'package:whoami_app/src/features/notifications/presentation/pages/notifications_page.dart';
+
+import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
 import 'package:whoami_app/src/features/emergency/presentation/pages/emergency_map_page.dart';
 import 'package:whoami_app/src/features/emergency/presentation/pages/panic_button_page.dart';
-import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
-import 'package:whoami_app/src/features/support_contacts/presentation/support_contacts_screen.dart';
-
 import 'package:whoami_app/src/features/memories/data/memories_scheduler.dart';
+import 'package:whoami_app/src/features/memories/presentation/pages/calendar_page.dart';
 import 'package:whoami_app/src/features/notifications/data/notifications_service.dart';
+import 'package:whoami_app/src/features/notifications/presentation/pages/notifications_page.dart';
+import 'package:whoami_app/src/features/patients/presentation/pages/patients_list_page.dart';
+import 'package:whoami_app/src/features/preventive_info/presentation/preventive_info_screen.dart';
+import 'package:whoami_app/src/features/support_contacts/presentation/support_contacts_screen.dart';
+import 'package:whoami_app/src/features/tips/presentation/pages/quick_guides_page.dart';
 
 class HomeCaregiverPage extends StatefulWidget {
-  const HomeCaregiverPage({super.key, this.displayName});
+  const HomeCaregiverPage({
+    super.key,
+    this.displayName,
+  });
 
   static const route = '/home/caregiver';
 
   final String? displayName;
 
   @override
-  State<HomeCaregiverPage> createState() => _HomeCaregiverPageState();
+  State<HomeCaregiverPage> createState() {
+    return _HomeCaregiverPageState();
+  }
 }
 
 class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
-  String? _lastAlertId;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _emergencySubscription;
+
+  /*
+   * Guarda todos los identificadores ya procesados.
+   *
+   * Antes solamente se guardaba _lastAlertId. Si Firestore
+   * devolvía varias emergencias, los identificadores se
+   * alternaban y las alertas volvían a aparecer.
+   */
+  final Set<String> _processedEmergencyIds =
+      <String>{};
+
+  /*
+   * Evita abrir varios diálogos al mismo tiempo.
+   */
+  bool _emergencyDialogVisible = false;
 
   @override
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _initializeHome();
-      _listenForEmergencyAlerts();
-    });
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) async {
+        if (!mounted) {
+          return;
+        }
+
+        await _initializeHome();
+
+        if (!mounted) {
+          return;
+        }
+
+        _listenForEmergencyAlerts();
+      },
+    );
   }
+
+  // ============================================================
+  // INICIALIZAR HOME DEL CUIDADOR
+  // ============================================================
 
   Future<void> _initializeHome() async {
     try {
       await NotificationsService.ensureInitialized();
 
-      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final uid =
+          FirebaseAuth.instance.currentUser?.uid;
 
       if (uid != null) {
-        await MemoriesScheduler.scheduleAllForUser(uid);
+        await MemoriesScheduler.scheduleAllForUser(
+          uid,
+        );
       }
-    } catch (e) {
-      debugPrint('Error en inicialización del HomeCaregiver: $e');
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Error inicializando la pantalla del cuidador: $error',
+      );
+
+      debugPrint(
+        stackTrace.toString(),
+      );
     }
   }
 
-  Future<void> _resolveEmergency(String docId) async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('emergencies')
-          .doc(docId)
-          .update({'active': false});
+  // ============================================================
+  // CONTAR NOTIFICACIONES GENERALES NO LEÍDAS
+  // ============================================================
 
-      final pending = await NotificationsService.pendingNotificationRequests();
+  int _countUnreadAppNotifications(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) {
+    return snapshot.docs.where(
+      (document) {
+        final data =
+            document.data();
 
-      for (final item in pending) {
-        if (item.payload == 'emergency') {
-          await NotificationsService.cancel(item.id);
-        }
-      }
-    } catch (e) {
-      debugPrint('Error resolviendo emergencia: $e');
-    }
+        final read =
+            data['read'] == true;
+
+        final deleted =
+            data['deleted'] == true;
+
+        final completed =
+            data['completed'] == true;
+
+        final resolved =
+            data['resolved'] == true;
+
+        final activeValue =
+            data['active'];
+
+        final inactive =
+            activeValue != null &&
+            activeValue == false;
+
+        final type =
+            data['type']
+                    ?.toString()
+                    .trim()
+                    .toLowerCase() ??
+                '';
+
+        final isEmergency =
+            type == 'emergency' ||
+            type == 'emergencia' ||
+            type == 'emergency_alert' ||
+            type == 'panic' ||
+            type == 'panic_alert';
+
+        return !read &&
+            !deleted &&
+            !completed &&
+            !resolved &&
+            !inactive &&
+            !isEmergency;
+      },
+    ).length;
   }
 
-  void _listenForEmergencyAlerts() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+  // ============================================================
+  // CONTAR EMERGENCIAS PENDIENTES
+  // ============================================================
 
-    if (uid == null) return;
+  int _countUnreadEmergencies(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) {
+    return snapshot.docs.where(
+      (document) {
+        final data =
+            document.data();
 
-    final emergenciesRef = FirebaseFirestore.instance
-        .collection('emergencies')
-        .where('caregiverId', isEqualTo: uid)
-        .where('active', isEqualTo: true)
-        .orderBy('timestamp', descending: true);
+        final active =
+            data['active'] == true;
 
-    emergenciesRef.snapshots(includeMetadataChanges: true).listen(
-      (snapshot) {
-        if (snapshot.docs.isEmpty) return;
+        final read =
+            data['read'] == true;
 
-        for (final doc in snapshot.docs) {
-          final alertId = doc.id;
+        final deleted =
+            data['deleted'] == true;
 
-          if (_lastAlertId == alertId) continue;
+        final resolved =
+            data['resolved'] == true;
 
-          _lastAlertId = alertId;
-
-        final data = doc.data();
-        final consultantId = data['consultantId'] ?? '';
-        final consultantName = data['consultantName'] ?? 'Consultante';
-        final lat = data['lat'];
-        final lng = data['lng'];
-        final title = data['title'] ?? '🚨 Emergencia detectada';
-        final body = data['body'] ?? '$consultantName necesita ayuda.';
-
-        if (lat == null || lng == null) continue;
-
-        debugPrint('🆘 Emergencia recibida en tiempo real para cuidador $uid');
-
-          if (!kIsWeb) {
-            NotificationsService.showInstant(
-              title: title,
-              body: body,
-            );
-
-            Vibration.vibrate(
-              duration: 1500,
-              amplitude: 255,
-            );
-          }
-
-          if (!mounted) return;
-
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            final colors = context.appColors;
-
-          final dialogBgTop = context.isDark
-              ? const Color(0xFF3B2024)
-              : const Color(0xFFFFDDDD);
-          final dialogBgBottom = context.isDark
-              ? const Color(0xFF24161A)
-              : const Color(0xFFFFF1F1);
-          final shadowColor = context.isDark
-              ? Colors.black.withValues(alpha: 0.45)
-              : Colors.black.withValues(alpha: 0.20);
-          final dangerAccent = context.isDark
-              ? const Color(0xFFFF8E8E)
-              : Colors.red;
-
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) => Dialog(
-              backgroundColor: Colors.transparent,
-              insetPadding:
-                  const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(22),
-                  gradient: LinearGradient(
-                    colors: [dialogBgTop, dialogBgBottom],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: shadowColor,
-                      blurRadius: 22,
-                      offset: const Offset(0, 8),
-                    )
-                  ],
-                  border: Border.all(
-                    color: context.isDark
-                        ? const Color(0xFF6B2B33)
-                        : const Color(0xFFFFC2C2),
-                  ),
-                ),
-                padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: dangerAccent.withValues(alpha: 0.18),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.warning_rounded,
-                            color: dangerAccent,
-                            size: 32,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Emergencia de $consultantName',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: colors.textPrimary,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      body,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: colors.textPrimary,
-                        fontSize: 16,
-                        height: 1.3,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: 240,
-                        child: EmergencyMapPage(
-                          consultantId: consultantId,
-                          lat: lat,
-                          lng: lng,
-                          isDialog: true,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.navigation_rounded,
-                            color: Colors.white),
-                        label: const Text(
-                          "Abrir en Google Maps",
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                            color: Colors.white,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: context.isDark
-                              ? const Color(0xFFC35B5B)
-                              : Colors.redAccent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          elevation: 4,
-                        ),
-                        onPressed: () async {
-                          final url = 'https://www.google.com/maps?q=$lat,$lng';
-                          final uri = Uri.parse(url);
-
-                          if (await canLaunchUrl(uri)) {
-                            await launchUrl(uri,
-                                mode: LaunchMode.externalApplication);
-                          }
-
-                          if (context.mounted) Navigator.pop(context);
-                          await _resolveEmergency(alertId);
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        await _resolveEmergency(alertId);
-                      },
-                      child: Text(
-                        "Cerrar",
-                        style: TextStyle(
-                          color: colors.textPrimary,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.underline,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        });
-      }
-    }, onError: (error) {
-      debugPrint('⚠️ Error escuchando emergencias: $error');
-    });
+        return active &&
+            !read &&
+            !deleted &&
+            !resolved;
+      },
+    ).length;
   }
 
-
+  // ============================================================
+  // ABRIR PANTALLA DE NOTIFICACIONES
+  // ============================================================
 
   Future<void> _openNotifications() async {
     await Navigator.pushNamed(
@@ -300,189 +202,1592 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
     );
   }
 
+  // ============================================================
+  // RESOLVER COPIAS INTERNAS DE UNA EMERGENCIA
+  // ============================================================
+
+  Future<void> _resolveInternalEmergencyNotifications(
+    String emergencyId,
+  ) async {
+    final uid =
+        FirebaseAuth.instance.currentUser?.uid;
+
+    if (uid == null) {
+      return;
+    }
+
+    final firestore =
+        FirebaseFirestore.instance;
+
+    final collection =
+        firestore
+            .collection('users')
+            .doc(uid)
+            .collection('notifications');
+
+    final documents =
+        <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+
+    try {
+      final byEmergencyKey =
+          await collection
+              .where(
+                'emergencyKey',
+                isEqualTo: emergencyId,
+              )
+              .get();
+
+      for (final document in byEmergencyKey.docs) {
+        documents[document.id] =
+            document;
+      }
+    } catch (error) {
+      debugPrint(
+        'No se encontraron copias por emergencyKey: $error',
+      );
+    }
+
+    try {
+      final byEmergencyId =
+          await collection
+              .where(
+                'emergencyId',
+                isEqualTo: emergencyId,
+              )
+              .get();
+
+      for (final document in byEmergencyId.docs) {
+        documents[document.id] =
+            document;
+      }
+    } catch (error) {
+      debugPrint(
+        'No se encontraron copias por emergencyId: $error',
+      );
+    }
+
+    /*
+     * Busca documentos antiguos que no tengan emergencyKey,
+     * pero cuyo payload contenga el ID real de la emergencia.
+     */
+    try {
+      final allNotifications =
+          await collection.get();
+
+      for (final document in allNotifications.docs) {
+        final data =
+            document.data();
+
+        final type =
+            data['type']
+                    ?.toString()
+                    .trim()
+                    .toLowerCase() ??
+                '';
+
+        final payload =
+            data['payload']
+                    ?.toString()
+                    .trim() ??
+                '';
+
+        final isEmergency =
+            type == 'emergency' ||
+            type == 'emergencia' ||
+            type == 'emergency_alert' ||
+            type == 'panic' ||
+            type == 'panic_alert';
+
+        final matchesPayload =
+            payload == 'emergency/$emergencyId' ||
+            payload == 'emergencia/$emergencyId';
+
+        if (isEmergency &&
+            matchesPayload) {
+          documents[document.id] =
+              document;
+        }
+      }
+    } catch (error) {
+      debugPrint(
+        'Error buscando copias antiguas de emergencia: $error',
+      );
+    }
+
+    if (documents.isEmpty) {
+      return;
+    }
+
+    final batch =
+        firestore.batch();
+
+    for (final document in documents.values) {
+      batch.set(
+        document.reference,
+        {
+          'read': true,
+          'deleted': true,
+          'completed': true,
+          'active': false,
+          'resolved': true,
+          'resolvedAt':
+              FieldValue.serverTimestamp(),
+          'updatedAt':
+              FieldValue.serverTimestamp(),
+        },
+        SetOptions(
+          merge: true,
+        ),
+      );
+    }
+
+    await batch.commit();
+  }
+
+  // ============================================================
+  // RESOLVER EMERGENCIA
+  // ============================================================
+
+  Future<void> _resolveEmergency(
+    String documentId,
+  ) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('emergencies')
+          .doc(documentId)
+          .set(
+        {
+          'active': false,
+          'read': true,
+          'resolved': true,
+          'resolvedAt':
+              FieldValue.serverTimestamp(),
+          'updatedAt':
+              FieldValue.serverTimestamp(),
+        },
+        SetOptions(
+          merge: true,
+        ),
+      );
+
+      /*
+       * Cancela solamente la notificación local asociada
+       * a esta emergencia.
+       */
+      await NotificationsService.closeEmergencyAlert(
+        emergencyKey: documentId,
+      );
+
+      await _resolveInternalEmergencyNotifications(
+        documentId,
+      );
+
+      _processedEmergencyIds.add(
+        documentId,
+      );
+
+      debugPrint(
+        'Emergencia resuelta correctamente: $documentId',
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Error resolviendo emergencia: $error',
+      );
+
+      debugPrint(
+        stackTrace.toString(),
+      );
+    }
+  }
+
+// ============================================================
+// ESCUCHAR EMERGENCIAS DEL CUIDADOR
+// ============================================================
+
+void _listenForEmergencyAlerts() {
+  final uid =
+      FirebaseAuth.instance.currentUser?.uid;
+
+  if (uid == null) {
+    return;
+  }
+
+  _emergencySubscription?.cancel();
+
+  final Query<Map<String, dynamic>> emergenciesQuery =
+      FirebaseFirestore.instance
+          .collection('emergencies')
+          .where(
+            'caregiverId',
+            isEqualTo: uid,
+          )
+          .where(
+            'active',
+            isEqualTo: true,
+          )
+          .orderBy(
+            'timestamp',
+            descending: true,
+          );
+
+  _emergencySubscription =
+      emergenciesQuery.snapshots().listen(
+    (
+      QuerySnapshot<Map<String, dynamic>> snapshot,
+    ) async {
+      if (snapshot.docs.isEmpty) {
+        return;
+      }
+
+      final changes =
+          snapshot.docChanges.where(
+        (
+          DocumentChange<Map<String, dynamic>> change,
+        ) {
+          return change.type ==
+                  DocumentChangeType.added ||
+              change.type ==
+                  DocumentChangeType.modified;
+        },
+      );
+
+      for (final change in changes) {
+  final DocumentSnapshot<Map<String, dynamic>> document =
+      change.doc;
+
+  final Map<String, dynamic>? rawData =
+      document.data();
+
+  if (rawData == null) {
+    continue;
+  }
+
+  final Map<String, dynamic> data =
+      rawData;
+
+  final String alertId =
+      document.id;
+
+        final bool active =
+            data['active'] == true;
+
+        final bool read =
+            data['read'] == true;
+
+        final bool deleted =
+            data['deleted'] == true;
+
+        final bool resolved =
+            data['resolved'] == true;
+
+        if (!active ||
+            read ||
+            deleted ||
+            resolved) {
+          continue;
+        }
+
+        if (_processedEmergencyIds.contains(
+          alertId,
+        )) {
+          continue;
+        }
+
+        /*
+         * Se agrega antes de mostrar la alerta para evitar
+         * que el mismo documento vuelva a procesarse.
+         */
+        _processedEmergencyIds.add(
+          alertId,
+        );
+
+        final String consultantId =
+            data['consultantId']
+                    ?.toString()
+                    .trim() ??
+                '';
+
+        final String rawConsultantName =
+            data['consultantName']
+                    ?.toString()
+                    .trim() ??
+                '';
+
+        final String consultantName =
+            rawConsultantName.isNotEmpty
+                ? rawConsultantName
+                : 'Consultante';
+
+        final dynamic lat =
+            data['lat'] ??
+                data['latitude'];
+
+        final dynamic lng =
+            data['lng'] ??
+                data['longitude'];
+
+        final String rawTitle =
+            data['title']
+                    ?.toString()
+                    .trim() ??
+                '';
+
+        final String title =
+            rawTitle.isNotEmpty
+                ? rawTitle
+                : 'Emergencia detectada';
+
+        final String rawBody =
+            data['body']
+                    ?.toString()
+                    .trim() ??
+                '';
+
+        final String body =
+            rawBody.isNotEmpty
+                ? rawBody
+                : '$consultantName necesita ayuda.';
+
+        debugPrint(
+          'Emergencia nueva recibida: $alertId',
+        );
+
+        if (!kIsWeb) {
+          /*
+           * La emergencia ya está guardada en Firestore.
+           * No se vuelve a guardar para evitar el ciclo de
+           * notificaciones.
+           */
+          unawaited(
+            NotificationsService.showEmergencyAlert(
+              title: title,
+              body: body,
+              emergencyKey: alertId,
+              saveInFirestore: false,
+            ),
+          );
+
+          unawaited(
+            Vibration.vibrate(
+              duration: 1500,
+              amplitude: 255,
+            ),
+          );
+        }
+
+        if (!mounted) {
+          return;
+        }
+
+        /*
+         * Evita colocar varios diálogos uno encima de otro.
+         */
+        if (_emergencyDialogVisible) {
+          continue;
+        }
+
+        _emergencyDialogVisible =
+            true;
+
+        try {
+          await _showEmergencyDialog(
+            alertId: alertId,
+            consultantId: consultantId,
+            consultantName: consultantName,
+            body: body,
+            lat: lat,
+            lng: lng,
+          );
+        } catch (error, stackTrace) {
+          debugPrint(
+            'Error mostrando la emergencia: $error',
+          );
+
+          debugPrint(
+            stackTrace.toString(),
+          );
+        } finally {
+          _emergencyDialogVisible =
+              false;
+        }
+      }
+    },
+    onError: (
+      Object error,
+      StackTrace stackTrace,
+    ) {
+      debugPrint(
+        'Error escuchando emergencias: $error',
+      );
+
+      debugPrint(
+        stackTrace.toString(),
+      );
+    },
+  );
+}
+    // ============================================================
+  // MOSTRAR DIÁLOGO DE EMERGENCIA
+  // ============================================================
+
+  Future<void> _showEmergencyDialog({
+    required String alertId,
+    required String consultantId,
+    required String consultantName,
+    required String body,
+    required dynamic lat,
+    required dynamic lng,
+  }) async {
+    if (!mounted) {
+      return;
+    }
+
+    final colors =
+        context.appColors;
+
+    final dialogBgTop =
+        context.isDark
+            ? const Color(0xFF3B2024)
+            : const Color(0xFFFFDDDD);
+
+    final dialogBgBottom =
+        context.isDark
+            ? const Color(0xFF24161A)
+            : const Color(0xFFFFF1F1);
+
+    final shadowColor =
+        context.isDark
+            ? Colors.black.withValues(
+                alpha: 0.45,
+              )
+            : Colors.black.withValues(
+                alpha: 0.20,
+              );
+
+    final dangerAccent =
+        context.isDark
+            ? const Color(0xFFFF8E8E)
+            : Colors.red;
+
+    bool resolving =
+        false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (
+        dialogContext,
+      ) {
+        return StatefulBuilder(
+          builder: (
+            context,
+            setDialogState,
+          ) {
+            return PopScope(
+              canPop:
+                  false,
+              child: Dialog(
+                backgroundColor:
+                    Colors.transparent,
+                insetPadding:
+                    const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 24,
+                ),
+                child: Container(
+                  decoration:
+                      BoxDecoration(
+                    borderRadius:
+                        BorderRadius.circular(
+                      22,
+                    ),
+                    gradient:
+                        LinearGradient(
+                      colors: [
+                        dialogBgTop,
+                        dialogBgBottom,
+                      ],
+                      begin:
+                          Alignment.topCenter,
+                      end:
+                          Alignment.bottomCenter,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color:
+                            shadowColor,
+                        blurRadius:
+                            22,
+                        offset:
+                            const Offset(
+                          0,
+                          8,
+                        ),
+                      ),
+                    ],
+                    border:
+                        Border.all(
+                      color:
+                          context.isDark
+                              ? const Color(
+                                  0xFF6B2B33,
+                                )
+                              : const Color(
+                                  0xFFFFC2C2,
+                                ),
+                    ),
+                  ),
+                  padding:
+                      const EdgeInsets.fromLTRB(
+                    20,
+                    22,
+                    20,
+                    18,
+                  ),
+                  child:
+                      SingleChildScrollView(
+                    child:
+                        Column(
+                      mainAxisSize:
+                          MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding:
+                                  const EdgeInsets.all(
+                                10,
+                              ),
+                              decoration:
+                                  BoxDecoration(
+                                color:
+                                    dangerAccent.withValues(
+                                  alpha:
+                                      0.18,
+                                ),
+                                shape:
+                                    BoxShape.circle,
+                              ),
+                              child:
+                                  Icon(
+                                Icons.warning_rounded,
+                                color:
+                                    dangerAccent,
+                                size:
+                                    32,
+                              ),
+                            ),
+                            const SizedBox(
+                              width:
+                                  12,
+                            ),
+                            Expanded(
+                              child:
+                                  Text(
+                                'Emergencia de $consultantName',
+                                style:
+                                    TextStyle(
+                                  fontSize:
+                                      20,
+                                  fontWeight:
+                                      FontWeight.w800,
+                                  color:
+                                      colors.textPrimary,
+                                ),
+                                overflow:
+                                    TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(
+                          height:
+                              14,
+                        ),
+
+                        Text(
+                          body,
+                          textAlign:
+                              TextAlign.center,
+                          style:
+                              TextStyle(
+                            color:
+                                colors.textPrimary,
+                            fontSize:
+                                16,
+                            height:
+                                1.3,
+                            fontWeight:
+                                FontWeight.w500,
+                          ),
+                        ),
+
+                        const SizedBox(
+                          height:
+                              18,
+                        ),
+
+                        if (lat != null &&
+                            lng != null)
+                          ClipRRect(
+                            borderRadius:
+                                BorderRadius.circular(
+                              16,
+                            ),
+                            child:
+                                SizedBox(
+                              width:
+                                  double.infinity,
+                              height:
+                                  240,
+                              child:
+                                  EmergencyMapPage(
+                                consultantId:
+                                    consultantId,
+                                lat:
+                                    lat,
+                                lng:
+                                    lng,
+                                isDialog:
+                                    true,
+                              ),
+                            ),
+                          )
+                        else
+                          Container(
+                            width:
+                                double.infinity,
+                            padding:
+                                const EdgeInsets.all(
+                              20,
+                            ),
+                            decoration:
+                                BoxDecoration(
+                              color:
+                                  colors.cardBackground.withValues(
+                                alpha:
+                                    0.65,
+                              ),
+                              borderRadius:
+                                  BorderRadius.circular(
+                                16,
+                              ),
+                              border:
+                                  Border.all(
+                                color:
+                                    colors.border,
+                              ),
+                            ),
+                            child:
+                                Column(
+                              children: [
+                                Icon(
+                                  Icons.location_off_rounded,
+                                  size:
+                                      42,
+                                  color:
+                                      colors.textSecondary,
+                                ),
+                                const SizedBox(
+                                  height:
+                                      10,
+                                ),
+                                Text(
+                                  'La ubicación no está disponible.',
+                                  textAlign:
+                                      TextAlign.center,
+                                  style:
+                                      TextStyle(
+                                    color:
+                                        colors.textPrimary,
+                                    fontSize:
+                                        15,
+                                    fontWeight:
+                                        FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        const SizedBox(
+                          height:
+                              20,
+                        ),
+
+                        SizedBox(
+                          width:
+                              double.infinity,
+                          height:
+                              48,
+                          child:
+                              ElevatedButton.icon(
+                            icon:
+                                resolving
+                                    ? const SizedBox(
+                                        width:
+                                            20,
+                                        height:
+                                            20,
+                                        child:
+                                            CircularProgressIndicator(
+                                          strokeWidth:
+                                              2,
+                                          color:
+                                              Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.navigation_rounded,
+                                        color:
+                                            Colors.white,
+                                      ),
+                            label:
+                                Text(
+                              resolving
+                                  ? 'Procesando...'
+                                  : 'Abrir en Google Maps',
+                              style:
+                                  const TextStyle(
+                                fontWeight:
+                                    FontWeight.w700,
+                                fontSize:
+                                    16,
+                                color:
+                                    Colors.white,
+                              ),
+                            ),
+                            style:
+                                ElevatedButton.styleFrom(
+                              backgroundColor:
+                                  context.isDark
+                                      ? const Color(
+                                          0xFFC35B5B,
+                                        )
+                                      : Colors.redAccent,
+                              disabledBackgroundColor:
+                                  context.isDark
+                                      ? const Color(
+                                          0xFF7D4444,
+                                        )
+                                      : Colors.redAccent.withValues(
+                                          alpha:
+                                              0.55,
+                                        ),
+                              shape:
+                                  RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(
+                                  14,
+                                ),
+                              ),
+                              elevation:
+                                  4,
+                            ),
+                            onPressed:
+                                resolving
+                                    ? null
+                                    : () async {
+                                        if (lat == null ||
+                                            lng == null) {
+                                          await _showHomeMessageDialog(
+                                            dialogContext,
+                                            title:
+                                                'Ubicación no disponible',
+                                            message:
+                                                'La alerta no contiene coordenadas válidas.',
+                                          );
+
+                                          return;
+                                        }
+
+                                        setDialogState(
+                                          () {
+                                            resolving =
+                                                true;
+                                          },
+                                        );
+
+                                        try {
+                                          final uri =
+                                              Uri.parse(
+                                            'https://www.google.com/maps?q=$lat,$lng',
+                                          );
+
+                                          final canOpen =
+                                              await canLaunchUrl(
+                                            uri,
+                                          );
+
+                                          if (canOpen) {
+                                            await launchUrl(
+                                              uri,
+                                              mode:
+                                                  LaunchMode.externalApplication,
+                                            );
+                                          } else if (dialogContext.mounted) {
+                                            await _showHomeMessageDialog(
+                                              dialogContext,
+                                              title:
+                                                  'No se pudo abrir el mapa',
+                                              message:
+                                                  'No se encontró una aplicación compatible para abrir la ubicación.',
+                                            );
+                                          }
+
+                                          await _resolveEmergency(
+                                            alertId,
+                                          );
+
+                                          if (dialogContext.mounted) {
+                                            Navigator.of(
+                                              dialogContext,
+                                            ).pop();
+                                          }
+                                        } catch (
+                                          error,
+                                          stackTrace
+                                        ) {
+                                          debugPrint(
+                                            'Error abriendo Google Maps: $error',
+                                          );
+
+                                          debugPrint(
+                                            stackTrace.toString(),
+                                          );
+
+                                          if (dialogContext.mounted) {
+                                            setDialogState(
+                                              () {
+                                                resolving =
+                                                    false;
+                                              },
+                                            );
+
+                                            await _showHomeMessageDialog(
+                                              dialogContext,
+                                              title:
+                                                  'Error',
+                                              message:
+                                                  'No se pudo abrir la ubicación de la emergencia.',
+                                            );
+                                          }
+                                        }
+                                      },
+                          ),
+                        ),
+
+                        const SizedBox(
+                          height:
+                              12,
+                        ),
+
+                        SizedBox(
+                          width:
+                              double.infinity,
+                          height:
+                              46,
+                          child:
+                              OutlinedButton.icon(
+                            icon:
+                                resolving
+                                    ? const SizedBox(
+                                        width:
+                                            18,
+                                        height:
+                                            18,
+                                        child:
+                                            CircularProgressIndicator(
+                                          strokeWidth:
+                                              2,
+                                        ),
+                                      )
+                                    : Icon(
+                                        Icons.check_circle_outline_rounded,
+                                        color:
+                                            colors.textPrimary,
+                                      ),
+                            label:
+                                Text(
+                              resolving
+                                  ? 'Procesando...'
+                                  : 'Cerrar emergencia',
+                              style:
+                                  TextStyle(
+                                color:
+                                    colors.textPrimary,
+                                fontSize:
+                                    15,
+                                fontWeight:
+                                    FontWeight.w700,
+                              ),
+                            ),
+                            style:
+                                OutlinedButton.styleFrom(
+                              side:
+                                  BorderSide(
+                                color:
+                                    colors.border,
+                              ),
+                              shape:
+                                  RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(
+                                  14,
+                                ),
+                              ),
+                            ),
+                            onPressed:
+                                resolving
+                                    ? null
+                                    : () async {
+                                        setDialogState(
+                                          () {
+                                            resolving =
+                                                true;
+                                          },
+                                        );
+
+                                        try {
+                                          await _resolveEmergency(
+                                            alertId,
+                                          );
+
+                                          if (dialogContext.mounted) {
+                                            Navigator.of(
+                                              dialogContext,
+                                            ).pop();
+                                          }
+                                        } catch (
+                                          error,
+                                          stackTrace
+                                        ) {
+                                          debugPrint(
+                                            'Error cerrando emergencia: $error',
+                                          );
+
+                                          debugPrint(
+                                            stackTrace.toString(),
+                                          );
+
+                                          if (dialogContext.mounted) {
+                                            setDialogState(
+                                              () {
+                                                resolving =
+                                                    false;
+                                              },
+                                            );
+
+                                            await _showHomeMessageDialog(
+                                              dialogContext,
+                                              title:
+                                                  'Error',
+                                              message:
+                                                  'No se pudo cerrar la emergencia.',
+                                            );
+                                          }
+                                        }
+                                      },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // DIÁLOGO INFORMATIVO DEL HOME
+  // ============================================================
+
+  Future<void> _showHomeMessageDialog(
+    BuildContext dialogContext, {
+    required String title,
+    required String message,
+  }) async {
+    if (!dialogContext.mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context:
+          dialogContext,
+      builder:
+          (
+        messageContext,
+      ) {
+        final colors =
+            messageContext.appColors;
+
+        return AlertDialog(
+          backgroundColor:
+              colors.cardBackground,
+          shape:
+              RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(
+              20,
+            ),
+          ),
+          title:
+              Text(
+            title,
+            style:
+                TextStyle(
+              color:
+                  colors.textPrimary,
+              fontWeight:
+                  FontWeight.w800,
+            ),
+          ),
+          content:
+              Text(
+            message,
+            style:
+                TextStyle(
+              color:
+                  colors.textSecondary,
+              fontSize:
+                  15,
+              height:
+                  1.35,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed:
+                  () {
+                Navigator.of(
+                  messageContext,
+                ).pop();
+              },
+              child:
+                  Text(
+                'Aceptar',
+                style:
+                    TextStyle(
+                  color:
+                      colors.textPrimary,
+                  fontWeight:
+                      FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // INTERFAZ PRINCIPAL
+  // ============================================================
+
   @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
+  Widget build(
+    BuildContext context,
+  ) {
+    final colors =
+        context.appColors;
+
+    final currentUser =
+        FirebaseAuth.instance.currentUser;
+
+    final uid =
+        currentUser?.uid;
 
     return Scaffold(
-      backgroundColor: colors.pageBackground,
-      body: Stack(
+      backgroundColor:
+          colors.pageBackground,
+      body:
+          Stack(
         children: [
           SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 72, 20, 20),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 420),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+            child:
+                SingleChildScrollView(
+              padding:
+                  const EdgeInsets.fromLTRB(
+                20,
+                72,
+                20,
+                20,
+              ),
+              child:
+                  Center(
+                child:
+                    ConstrainedBox(
+                  constraints:
+                      const BoxConstraints(
+                    maxWidth:
+                        420,
+                  ),
+                  child:
+                      Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.center,
                     children: [
-                      const UserAvatar(radius: 60),
-                      const SizedBox(height: 12),
                       StreamBuilder<User?>(
-                        stream: FirebaseAuth.instance.userChanges(),
-                        builder: (context, authSnap) {
+                        stream:
+                            FirebaseAuth.instance.userChanges(),
+                        builder:
+                            (
+                          context,
+                          authSnapshot,
+                        ) {
                           final user =
-                              authSnap.data ?? FirebaseAuth.instance.currentUser;
+                              authSnapshot.data ??
+                                  FirebaseAuth.instance.currentUser;
 
-                          if (user == null) return const SizedBox();
-
-                          final uid = user.uid;
+                          if (user == null) {
+                            return const SizedBox.shrink();
+                          }
 
                           return StreamBuilder<
                               DocumentSnapshot<Map<String, dynamic>>>(
-                            stream: FirebaseFirestore.instance
-                                .collection('users')
-                                .doc(uid)
-                                .snapshots(),
-                            builder: (context, docSnap) {
-                              String name = 'Cuidador';
+                            stream:
+                                FirebaseFirestore.instance
+                                    .collection(
+                                      'users',
+                                    )
+                                    .doc(
+                                      user.uid,
+                                    )
+                                    .snapshots(),
+                            builder:
+                                (
+                              context,
+                              userSnapshot,
+                            ) {
+                              String name =
+                                  'Cuidador';
 
-                              if (docSnap.hasData &&
-                                  docSnap.data!.data() != null) {
-                                final data = docSnap.data!.data()!;
+                              final userData =
+                                  userSnapshot.data?.data();
 
-                                final first =
-                                    (data['firstName'] as String?)?.trim() ??
+                              if (userData != null) {
+                                final firstName =
+                                    userData['firstName']
+                                            ?.toString()
+                                            .trim() ??
                                         '';
 
-                                final last =
-                                    (data['lastName'] as String?)?.trim() ?? '';
+                                final lastName =
+                                    userData['lastName']
+                                            ?.toString()
+                                            .trim() ??
+                                        '';
 
-                                final fsName = [first, last]
-                                    .where((item) => item.isNotEmpty)
-                                    .join(' ');
+                                final firestoreName =
+                                    [
+                                  firstName,
+                                  lastName,
+                                ]
+                                        .where(
+                                          (
+                                            value,
+                                          ) {
+                                            return value.isNotEmpty;
+                                          },
+                                        )
+                                        .join(
+                                          ' ',
+                                        );
 
-                                if (fsName.isNotEmpty) {
-                                  name = fsName;
+                                if (firestoreName.isNotEmpty) {
+                                  name =
+                                      firestoreName;
                                 }
                               }
 
-                              if (name == 'Cuidador') {
-                                final dn = (user.displayName ?? '').trim();
+                              if (name ==
+                                  'Cuidador') {
+                                final displayName =
+                                    user.displayName?.trim() ??
+                                        '';
 
-                                if (dn.isNotEmpty) {
-                                  name = dn;
+                                if (displayName.isNotEmpty) {
+                                  name =
+                                      displayName;
                                 }
                               }
 
-                              if (name == 'Cuidador') {
-                                final mail = user.email ?? '';
+                              if (name ==
+                                  'Cuidador') {
+                                final email =
+                                    user.email ??
+                                        '';
 
-                                if (mail.contains('@')) {
-                                  name = mail.split('@').first;
+                                if (email.contains(
+                                  '@',
+                                )) {
+                                  name =
+                                      email
+                                          .split(
+                                            '@',
+                                          )
+                                          .first;
                                 }
                               }
 
-                              name = name.isNotEmpty
-                                  ? name
-                                  : (widget.displayName ?? 'Cuidador');
+                              if (name.trim().isEmpty) {
+                                name =
+                                    widget.displayName ??
+                                        'Cuidador';
+                              }
 
                               return Text(
                                 'Bienvenido $name',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w700,
-                                  color: colors.textPrimary,
+                                textAlign:
+                                    TextAlign.center,
+                                style:
+                                    TextStyle(
+                                  fontSize:
+                                      28,
+                                  fontWeight:
+                                      FontWeight.w700,
+                                  color:
+                                      colors.textPrimary,
                                 ),
                               );
                             },
                           );
                         },
                       ),
-                      const SizedBox(height: 8),
+
+                      const SizedBox(
+                        height:
+                            8,
+                      ),
+
                       Text(
                         'Selecciona una opción',
-                        style: TextStyle(
-                          color: colors.textSecondary,
+                        style:
+                            TextStyle(
+                          color:
+                              colors.textSecondary,
                         ),
                       ),
-                      const SizedBox(height: 20),
+
+                      const SizedBox(
+                        height:
+                            20,
+                      ),
+
                       _PillButton(
                         color:
-                            context.isDark ? colors.secondaryButton : kPurple,
-                        icon: Icons.people_outline,
-                        text: 'Pacientes',
-                        onTap: () =>
-                            Navigator.pushNamed(context, PatientsListPage.route),
+                            context.isDark
+                                ? colors.secondaryButton
+                                : kPurple,
+                        icon:
+                            Icons.people_outline,
+                        text:
+                            'Pacientes',
+                        onTap:
+                            () {
+                          Navigator.pushNamed(
+                            context,
+                            PatientsListPage.route,
+                          );
+                        },
                       ),
+
                       _PillButton(
                         color:
-                            context.isDark ? colors.secondaryButton : kPurple,
-                        icon: Icons.menu_book_outlined,
-                        text: 'Guías',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const QuickGuidesPage()),
-                        ),
+                            context.isDark
+                                ? colors.secondaryButton
+                                : kPurple,
+                        icon:
+                            Icons.menu_book_outlined,
+                        text:
+                            'Guías',
+                        onTap:
+                            () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder:
+                                  (_) {
+                                return const QuickGuidesPage();
+                              },
+                            ),
+                          );
+                        },
                       ),
-                      _PillButton(
-                        color: context.isDark
-                            ? colors.secondaryButton
-                            : kPurple,
-                        icon: Icons.event_note_outlined,
-                        text: 'Recuerdos',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const CalendarPage()),
-                        ),
-                      ),
+
                       _PillButton(
                         color:
-                            context.isDark ? colors.secondaryButton : kPurple,
-                        icon: Icons.chat_bubble_outline,
-                        text: 'Asistente',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const AssistantPage()),
-                        ),
+                            context.isDark
+                                ? colors.secondaryButton
+                                : kPurple,
+                        icon:
+                            Icons.health_and_safety_outlined,
+                        text:
+                            'Prevención',
+                        onTap:
+                            () {
+                          Navigator.pushNamed(
+                            context,
+                            PreventiveInfoScreen.route,
+                          );
+                        },
                       ),
-                      const SizedBox(height: 24),
+
+                      _PillButton(
+                        color:
+                            context.isDark
+                                ? colors.secondaryButton
+                                : kPurple,
+                        icon:
+                            Icons.contact_phone_outlined,
+                        text:
+                            'Contactos',
+                        onTap:
+                            () {
+                          Navigator.pushNamed(
+                            context,
+                            SupportContactsScreen.route,
+                          );
+                        },
+                      ),
+
+                      _PillButton(
+                        color:
+                            context.isDark
+                                ? colors.secondaryButton
+                                : kPurple,
+                        icon:
+                            Icons.event_note_outlined,
+                        text:
+                            'Recuerdos',
+                        onTap:
+                            () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder:
+                                  (_) {
+                                return const CalendarPage();
+                              },
+                            ),
+                          );
+                        },
+                      ),
+
+                      _PillButton(
+                        color:
+                            context.isDark
+                                ? colors.secondaryButton
+                                : kPurple,
+                        icon:
+                            Icons.alarm_rounded,
+                        text:
+                            'Recordatorios',
+                        onTap:
+                            () {
+                          Navigator.pushNamed(
+                            context,
+                            '/reminders',
+                          );
+                        },
+                      ),
+
+                      _PillButton(
+                        color:
+                            context.isDark
+                                ? colors.secondaryButton
+                                : kPurple,
+                        icon:
+                            Icons.chat_bubble_outline,
+                        text:
+                            'Asistente',
+                        onTap:
+                            () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder:
+                                  (_) {
+                                return const AssistantPage();
+                              },
+                            ),
+                          );
+                        },
+                      ),
+
+                      _PillButton(
+                        color:
+                            colors.emergency,
+                        icon:
+                            Icons.emergency_share_rounded,
+                        text:
+                            'Pánico',
+                        onTap:
+                            () {
+                          Navigator.pushNamed(
+                            context,
+                            PanicButtonPage.route,
+                          );
+                        },
+                      ),
+
+                      const SizedBox(
+                        height:
+                            24,
+                      ),
                     ],
                   ),
                 ),
               ),
             ),
           ),
+
           SafeArea(
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 8, top: 4),
-                child: IconButton(
+            child:
+                Align(
+              alignment:
+                  Alignment.topLeft,
+              child:
+                  Padding(
+                padding:
+                    const EdgeInsets.only(
+                  left:
+                      8,
+                  top:
+                      4,
+                ),
+                child:
+                    IconButton(
                   icon:
-                      Icon(Icons.settings, color: colors.textPrimary, size: 28),
-                  onPressed: () => Navigator.pushNamed(context, '/settings'),
-                  tooltip: 'Ajustes',
+                      Icon(
+                    Icons.settings,
+                    color:
+                        colors.textPrimary,
+                    size:
+                        28,
+                  ),
+                  onPressed:
+                      () {
+                    Navigator.pushNamed(
+                      context,
+                      '/settings',
+                    );
+                  },
+                  tooltip:
+                      'Ajustes',
                 ),
               ),
             ),
           ),
+
           SafeArea(
-            child: Align(
-              alignment: Alignment.topRight,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 8, top: 4),
-                child: StreamBuilder<int>(
-                  stream:
-                      NotificationsService.watchUnreadAppNotificationCount(),
-                  builder: (context, snapshot) {
-                    final loading =
-                        snapshot.connectionState == ConnectionState.waiting &&
-                            !snapshot.hasData;
-
-                    final count = snapshot.data ?? 0;
-
-                    return _NotificationBell(
-                      count: count,
-                      loading: loading,
-                      onTap: _openNotifications,
-                    );
-                  },
+            child:
+                Align(
+              alignment:
+                  Alignment.topRight,
+              child:
+                  Padding(
+                padding:
+                    const EdgeInsets.only(
+                  right:
+                      8,
+                  top:
+                      4,
                 ),
+                child:
+                    uid == null
+                        ? _NotificationBell(
+                            count:
+                                0,
+                            loading:
+                                false,
+                            onTap:
+                                _openNotifications,
+                          )
+                        : StreamBuilder<
+                            QuerySnapshot<Map<String, dynamic>>>(
+                            stream:
+                                FirebaseFirestore.instance
+                                    .collection(
+                                      'users',
+                                    )
+                                    .doc(
+                                      uid,
+                                    )
+                                    .collection(
+                                      'notifications',
+                                    )
+                                    .snapshots(),
+                            builder:
+                                (
+                              context,
+                              notificationSnapshot,
+                            ) {
+                              final notificationLoading =
+                                  notificationSnapshot.connectionState ==
+                                          ConnectionState.waiting &&
+                                      !notificationSnapshot.hasData;
+
+                              final notificationCount =
+                                  notificationSnapshot.hasData
+                                      ? _countUnreadAppNotifications(
+                                          notificationSnapshot.data!,
+                                        )
+                                      : 0;
+
+                              return StreamBuilder<
+                                  QuerySnapshot<Map<String, dynamic>>>(
+                                stream:
+                                    FirebaseFirestore.instance
+                                        .collection(
+                                          'emergencies',
+                                        )
+                                        .where(
+                                          'caregiverId',
+                                          isEqualTo:
+                                              uid,
+                                        )
+                                        .snapshots(),
+                                builder:
+                                    (
+                                  context,
+                                  emergencySnapshot,
+                                ) {
+                                  final emergencyLoading =
+                                      emergencySnapshot.connectionState ==
+                                              ConnectionState.waiting &&
+                                          !emergencySnapshot.hasData;
+
+                                  final emergencyCount =
+                                      emergencySnapshot.hasData
+                                          ? _countUnreadEmergencies(
+                                              emergencySnapshot.data!,
+                                            )
+                                          : 0;
+
+                                  final totalCount =
+                                      notificationCount +
+                                          emergencyCount;
+
+                                  return _NotificationBell(
+                                    count:
+                                        totalCount,
+                                    loading:
+                                        notificationLoading ||
+                                            emergencyLoading,
+                                    onTap:
+                                        _openNotifications,
+                                  );
+                                },
+                              );
+                            },
+                          ),
               ),
             ),
           ),
@@ -490,7 +1795,17 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
       ),
     );
   }
+    @override
+  void dispose() {
+    _emergencySubscription?.cancel();
+
+    super.dispose();
+  }
 }
+
+// ============================================================
+// CAMPANA DE NOTIFICACIONES
+// ============================================================
 
 class _NotificationBell extends StatelessWidget {
   const _NotificationBell({
@@ -504,61 +1819,123 @@ class _NotificationBell extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
+  Widget build(
+    BuildContext context,
+  ) {
+    final colors =
+        context.appColors;
 
-    final showBadge = count > 0;
-    final display = count > 99 ? '99+' : count.toString();
+    final showBadge =
+        count > 0;
+
+    final display =
+        count > 99
+            ? '99+'
+            : count.toString();
 
     return Stack(
-      clipBehavior: Clip.none,
+      clipBehavior:
+          Clip.none,
       children: [
         IconButton(
-          onPressed: loading ? null : onTap,
-          icon: Icon(
-            Icons.notifications_none_rounded,
-            color: colors.textPrimary,
-            size: 28,
+          onPressed:
+              loading
+                  ? null
+                  : onTap,
+          icon:
+              Icon(
+            showBadge
+                ? Icons.notifications_active_rounded
+                : Icons.notifications_none_rounded,
+            color:
+                colors.textPrimary,
+            size:
+                28,
           ),
-          tooltip: 'Notificaciones',
+          tooltip:
+              showBadge
+                  ? '$count notificaciones no leídas'
+                  : 'Notificaciones',
         ),
+
         if (loading)
           Positioned(
-            right: 10,
-            top: 10,
-            child: SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: colors.primaryButton,
+            right:
+                9,
+            top:
+                8,
+            child:
+                SizedBox(
+              width:
+                  15,
+              height:
+                  15,
+              child:
+                  CircularProgressIndicator(
+                strokeWidth:
+                    2,
+                color:
+                    colors.primaryButton,
               ),
             ),
           ),
-        if (!loading && showBadge)
+
+        if (!loading &&
+            showBadge)
           Positioned(
-            right: 6,
-            top: 6,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 6,
-                vertical: 2,
+            right:
+                3,
+            top:
+                3,
+            child:
+                Container(
+              padding:
+                  const EdgeInsets.symmetric(
+                horizontal:
+                    6,
+                vertical:
+                    2,
               ),
-              decoration: BoxDecoration(
-                color: context.isDark ? const Color(0xFFC35B5B) : Colors.red,
-                borderRadius: BorderRadius.circular(12),
+              decoration:
+                  BoxDecoration(
+                color:
+                    context.isDark
+                        ? const Color(
+                            0xFFC35B5B,
+                          )
+                        : Colors.red,
+                borderRadius:
+                    BorderRadius.circular(
+                  12,
+                ),
+                border:
+                    Border.all(
+                  color:
+                      colors.pageBackground,
+                  width:
+                      1.5,
+                ),
               ),
-              constraints: const BoxConstraints(
-                minWidth: 20,
-                minHeight: 18,
+              constraints:
+                  const BoxConstraints(
+                minWidth:
+                    20,
+                minHeight:
+                    18,
               ),
-              alignment: Alignment.center,
-              child: Text(
+              alignment:
+                  Alignment.center,
+              child:
+                  Text(
                 display,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
+                style:
+                    const TextStyle(
+                  color:
+                      Colors.white,
+                  fontSize:
+                      11,
+                  fontWeight:
+                      FontWeight.w800,
                 ),
               ),
             ),
@@ -567,6 +1944,10 @@ class _NotificationBell extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// BOTÓN DEL MENÚ PRINCIPAL
+// ============================================================
 
 class _PillButton extends StatelessWidget {
   const _PillButton({
@@ -582,38 +1963,79 @@ class _PillButton extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final buttonTextColor = context.isDark ? Colors.white : colors.textPrimary;
+  Widget build(
+    BuildContext context,
+  ) {
+    final colors =
+        context.appColors;
+
+    final buttonTextColor =
+        context.isDark
+            ? Colors.white
+            : colors.textPrimary;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: SizedBox(
-        width: double.infinity,
-        height: 56,
-        child: FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: color,
-            foregroundColor: buttonTextColor,
-            shape: const StadiumBorder(),
-            elevation: 0,
+      padding:
+          const EdgeInsets.symmetric(
+        vertical:
+            8,
+      ),
+      child:
+          SizedBox(
+        width:
+            double.infinity,
+        height:
+            56,
+        child:
+            FilledButton(
+          style:
+              FilledButton.styleFrom(
+            backgroundColor:
+                color,
+            foregroundColor:
+                buttonTextColor,
+            shape:
+                const StadiumBorder(),
+            elevation:
+                0,
           ),
-          onPressed: onTap,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          onPressed:
+              onTap,
+          child:
+              Row(
+            mainAxisAlignment:
+                MainAxisAlignment.center,
             children: [
               Icon(
                 icon,
-                size: 24,
-                color: buttonTextColor,
+                size:
+                    24,
+                color:
+                    buttonTextColor,
               ),
-              const SizedBox(width: 12),
-              Text(
-                text,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: buttonTextColor,
+
+              const SizedBox(
+                width:
+                    12,
+              ),
+
+              Flexible(
+                child:
+                    Text(
+                  text,
+                  textAlign:
+                      TextAlign.center,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      TextStyle(
+                    fontSize:
+                        16,
+                    fontWeight:
+                        FontWeight.w700,
+                    color:
+                        buttonTextColor,
+                  ),
                 ),
               ),
             ],
