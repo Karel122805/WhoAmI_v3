@@ -7,6 +7,8 @@ import 'package:whoami_app/src/core/theme/app_theme.dart';
 import 'package:whoami_app/src/features/auth/presentation/pages/login_page.dart';
 import 'package:whoami_app/src/features/register/presentation/pages/register_name_page.dart';
 import 'package:whoami_app/src/core/services/permission_service.dart';
+import 'package:whoami_app/src/core/tutorial/tutorial_keys.dart';
+import 'package:whoami_app/src/core/tutorial/tutorial_manager.dart';
 
 class ChoiceStart extends StatefulWidget {
   const ChoiceStart({super.key});
@@ -30,6 +32,14 @@ class _ChoiceStartState extends State<ChoiceStart> {
   void initState() {
     super.initState();
     PermissionService.askAllPermissionsOnce();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await TutorialManager.maybeShow(
+        context,
+        TutorialKey.choiceStart,
+      );
+    });
   }
 
   Future<void> _openExternalUrl(String url) async {

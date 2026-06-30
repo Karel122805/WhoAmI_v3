@@ -1,43 +1,44 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- INTERNET Y RED -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- CÁMARA -->
     <uses-permission android:name="android.permission.CAMERA" />
-
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-<<<<<<< HEAD
-
-=======
->>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
-
-    <uses-permission
-        android:name="android.permission.READ_MEDIA_IMAGES"
-        tools:targetApi="33" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />
 
-<<<<<<< HEAD
-=======
+    <!-- AUDIO / MICRÓFONO PARA CHAT POR VOZ -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- NOTIFICACIONES, ALARMAS Y VIBRACIÓN -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- IMÁGENES / GALERÍA -->
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:targetApi="33" />
+
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- UBICACIÓN -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- APPS EXTERNAS QUE LA APP PUEDE CONSULTAR -->
     <queries>
         <intent>
             <action android:name="android.intent.action.DIAL" />
@@ -49,27 +50,53 @@
         </intent>
 
         <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+
+        <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />
         </intent>
     </queries>
 
->>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
     <application
         android:name="${applicationName}"
         android:label="WhoAmI?"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
 
+        <!-- PANTALLA NATIVA DE ALARMA -->
         <activity
             android:name=".AlarmActivity"
-            android:exported="true"
+            android:exported="false"
             android:launchMode="singleTask"
             android:theme="@style/LaunchTheme"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
-            android:excludeFromRecents="true" />
+            android:excludeFromRecents="true"
+            android:finishOnTaskLaunch="false"
+            android:noHistory="false" />
 
+        <!-- RECEIVER NATIVO DE RECORDATORIOS -->
+        <receiver
+            android:name=".AlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- RECEIVER PARA REINICIO DEL CELULAR -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ACTIVIDAD PRINCIPAL DE FLUTTER -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -90,68 +117,42 @@
             </intent-filter>
         </activity>
 
+        <!-- PROVEEDOR DE ARCHIVOS -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
+
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
 
-<<<<<<< HEAD
+        <!-- NOTIFICACIONES PROGRAMADAS DE FLUTTER -->
         <receiver
-            android:name=".AlarmReceiver"
-            android:exported="true" />
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:enabled="true"
+            android:exported="false" />
 
-        <receiver
-            android:name=".BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
-
-=======
->>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
+        <!-- RECUPERA NOTIFICACIONES AL REINICIAR O ACTUALIZAR LA APP -->
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:enabled="true"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
 
-        <receiver
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
-            android:exported="false" />
-
+        <!-- CONFIGURACIÓN DE FLUTTER -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
 
     </application>
 
-<<<<<<< HEAD
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.TTS_SERVICE" />
-        </intent>
-
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT" />
-            <data android:mimeType="text/plain" />
-        </intent>
-
-        <intent>
-            <action android:name="android.intent.action.DIAL" />
-            <data android:scheme="tel" />
-        </intent>
-    </queries>
-
-=======
->>>>>>> 08ed9da5e991c4c77de6bfb64fa25103f6cf3652
 </manifest>

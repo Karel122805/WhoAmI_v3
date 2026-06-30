@@ -5,6 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:whoami_app/src/core/widgets/brand_logo.dart';
 import 'package:whoami_app/src/core/theme/app_theme.dart';
+import 'package:whoami_app/src/core/tutorial/tutorial_keys.dart';
+import 'package:whoami_app/src/core/tutorial/tutorial_manager.dart';
 import 'package:whoami_app/src/features/auth/presentation/pages/login_page.dart';
 import 'package:whoami_app/src/features/home/presentation/pages/home_caregiver.dart';
 import 'package:whoami_app/src/features/home/presentation/pages/home_consultant.dart';
@@ -19,6 +21,29 @@ class RegisterRolePage extends StatefulWidget {
 
 class _RegisterRolePageState extends State<RegisterRolePage> {
   bool _saving = false;
+  bool _tutorialScheduled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_tutorialScheduled) {
+      return;
+    }
+
+    _tutorialScheduled = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        return;
+      }
+
+      await TutorialManager.maybeShow(
+        context,
+        TutorialKey.registerRole,
+      );
+    });
+  }
 
   String _buildDisplayName(String? nombre, String? apellidos, String? email) {
     final n = (nombre ?? '').trim();
@@ -409,6 +434,7 @@ class _RegisterRolePageState extends State<RegisterRolePage> {
       data: MediaQuery.of(context)
           .copyWith(textScaler: const TextScaler.linear(1.0)),
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         backgroundColor: colors.pageBackground,
         appBar: AppBar(
           backgroundColor: colors.pageBackground,
@@ -416,7 +442,12 @@ class _RegisterRolePageState extends State<RegisterRolePage> {
           elevation: 0,
           leading: IconButton(
             icon: Icon(Icons.arrow_back, color: colors.textPrimary),
-            onPressed: _saving ? null : () => Navigator.maybePop(context),
+            onPressed: _saving
+                ? null
+                : () {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    Navigator.maybePop(context);
+                  },
           ),
           centerTitle: true,
           title: Text(
@@ -429,12 +460,26 @@ class _RegisterRolePageState extends State<RegisterRolePage> {
           ),
         ),
         body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
+          child: LayoutBuilder(
+            builder: (
+              BuildContext context,
+              BoxConstraints constraints,
+            ) {
+              return SingleChildScrollView(
+                primary: false,
+                physics: const ClampingScrollPhysics(),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight - 36,
+                  ),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 420),
+                      child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: 16),
@@ -515,9 +560,12 @@ class _RegisterRolePageState extends State<RegisterRolePage> {
                     ),
                     const SizedBox(height: 28),
                   ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       ),

@@ -2,9 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import 'package:whoami_app/src/features/patients/data/patients_service.dart';
 import 'package:whoami_app/src/core/theme/app_theme.dart';
+import 'package:whoami_app/src/features/patients/data/patients_service.dart';
+import 'package:whoami_app/src/features/patients/presentation/pages/patient_profile_page.dart';
 import 'package:whoami_app/src/features/register/presentation/pages/register_patient_page.dart';
+import 'package:whoami_app/src/features/reports/presentation/patient_progress_report_page.dart';
 
 class PatientsListPage extends StatefulWidget {
   const PatientsListPage({super.key});
@@ -31,6 +33,20 @@ class _PatientsListPageState extends State<PatientsListPage> {
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  String _fmtBirthday(dynamic value) {
+    if (value is Timestamp) {
+      final d = value.toDate();
+      final dd = d.day.toString().padLeft(2, '0');
+      final mm = d.month.toString().padLeft(2, '0');
+      final yy = d.year.toString();
+      return '$dd/$mm/$yy';
+    }
+
+    if (value is String && value.isNotEmpty) return value;
+
+    return '';
   }
 
   @override
@@ -115,7 +131,7 @@ class _PatientsListPageState extends State<PatientsListPage> {
                             if (result == true && mounted) {
                               await showDialog(
                                 context: context,
-                                builder: (ctx) => _SuccessDialog(
+                                builder: (ctx) => const _SuccessDialog(
                                   title: 'Hecho',
                                   message: 'Paciente agregado correctamente.',
                                 ),
@@ -156,7 +172,8 @@ class _PatientsListPageState extends State<PatientsListPage> {
 
                           var docs = (snap.data ?? [])
                               .where(
-                                (d) => (d.data()?['role'] ?? '') == 'Consultante',
+                                (d) =>
+                                    (d.data()?['role'] ?? '') == 'Consultante',
                               )
                               .toList();
 
@@ -181,6 +198,7 @@ class _PatientsListPageState extends State<PatientsListPage> {
                                       .toString()
                                       .toLowerCase())
                                   .trim();
+
                               return name.contains(q);
                             }).toList();
                           }
@@ -201,24 +219,48 @@ class _PatientsListPageState extends State<PatientsListPage> {
                           return ListView.separated(
                             itemCount: docs.length,
                             separatorBuilder: (_, __) =>
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 10),
                             itemBuilder: (context, i) {
-                              final data = docs[i].data()!;
+                              final data = docs[i].data() ?? {};
                               final patientId = docs[i].id;
+
                               final name = (data['displayName'] ??
                                       '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}')
                                   .toString()
                                   .trim();
-                              final birthday = _fmtBirthday(data['birthday']);
+
+                              final birthday = _fmtBirthday(
+                                data['birthday'] ?? data['birthDate'],
+                              );
 
                               return _PatientRow(
+                                patientId: patientId,
                                 name: name.isEmpty ? 'Usuario' : name,
                                 subtitle: birthday,
+                                onViewProfile: () {
+                                  Navigator.pushNamed(
+                                    context,
+                                    PatientProfilePage.route,
+                                    arguments: {
+                                      'patientId': patientId,
+                                    },
+                                  );
+                                },
+                                onViewReport: () {
+                                  Navigator.pushNamed(
+                                    context,
+                                    PatientProgressReportPage.route,
+                                    arguments: {
+                                      'patientId': patientId,
+                                    },
+                                  );
+                                },
                                 onRemove: () async {
                                   final ok = await showDialog<bool>(
                                     context: context,
-                                    builder: (ctx) =>
-                                        _ConfirmRemoveDialog(name: name),
+                                    builder: (ctx) => _ConfirmRemoveDialog(
+                                      name: name.isEmpty ? 'Usuario' : name,
+                                    ),
                                   );
 
                                   if (ok != true) return;
@@ -265,23 +307,14 @@ class _PatientsListPageState extends State<PatientsListPage> {
       ),
     );
   }
-
-  String _fmtBirthday(dynamic value) {
-    if (value is Timestamp) {
-      final d = value.toDate();
-      final dd = d.day.toString().padLeft(2, '0');
-      final mm = d.month.toString().padLeft(2, '0');
-      final yy = d.year.toString();
-      return '$dd/$mm/$yy';
-    }
-    if (value is String && value.isNotEmpty) return value;
-    return '';
-  }
 }
 
 class _ConfirmRemoveDialog extends StatelessWidget {
+  const _ConfirmRemoveDialog({
+    required this.name,
+  });
+
   final String name;
-  const _ConfirmRemoveDialog({required this.name});
 
   @override
   Widget build(BuildContext context) {
@@ -334,12 +367,13 @@ class _ConfirmRemoveDialog extends StatelessWidget {
 }
 
 class _SuccessDialog extends StatelessWidget {
-  final String title;
-  final String message;
   const _SuccessDialog({
     required this.title,
     required this.message,
   });
+
+  final String title;
+  final String message;
 
   @override
   Widget build(BuildContext context) {
@@ -386,13 +420,19 @@ class _SuccessDialog extends StatelessWidget {
 
 class _PatientRow extends StatefulWidget {
   const _PatientRow({
+    required this.patientId,
     required this.name,
     required this.subtitle,
+    required this.onViewProfile,
+    required this.onViewReport,
     required this.onRemove,
   });
 
+  final String patientId;
   final String name;
   final String subtitle;
+  final VoidCallback onViewProfile;
+  final VoidCallback onViewReport;
   final Future<void> Function() onRemove;
 
   @override
@@ -406,10 +446,13 @@ class _PatientRowState extends State<_PatientRow> {
     if (_busy) return;
 
     setState(() => _busy = true);
+
     try {
       await widget.onRemove();
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -418,10 +461,13 @@ class _PatientRowState extends State<_PatientRow> {
     final colors = context.appColors;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 12,
+      ),
       decoration: BoxDecoration(
         color: colors.cardBackground,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: colors.border),
         boxShadow: context.isDark
             ? []
@@ -433,59 +479,117 @@ class _PatientRowState extends State<_PatientRow> {
                 ),
               ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.name,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                    color: colors.textPrimary,
-                  ),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: colors.inputFill,
+                child: Icon(
+                  Icons.person_outline,
+                  color: colors.textSecondary,
                 ),
-                const SizedBox(height: 4),
-                if (widget.subtitle.isNotEmpty)
-                  Text(
-                    widget.subtitle,
-                    style: TextStyle(color: colors.textSecondary),
-                  ),
-              ],
-            ),
-          ),
-          FilledButton.icon(
-            onPressed: _busy ? null : _handleRemove,
-            icon: _busy
-                ? SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: colors.emergencyText,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.name,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                        color: colors.textPrimary,
+                      ),
                     ),
-                  )
-                : const Icon(Icons.link_off),
-            label: Text(_busy ? 'Quitando…' : 'Desvincular'),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.subtitle.isEmpty
+                          ? 'Sin fecha de nacimiento'
+                          : widget.subtitle,
+                      style: TextStyle(
+                        color: colors.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: widget.onViewReport,
+            icon: const Icon(Icons.auto_graph_rounded),
+            label: const Text('Ver reporte de avances'),
             style: FilledButton.styleFrom(
-              minimumSize: const Size(150, 44),
-              backgroundColor: colors.emergency,
-              foregroundColor: colors.emergencyText,
-              textStyle: const TextStyle(fontWeight: FontWeight.w700),
+              minimumSize: const Size(double.infinity, 44),
+              backgroundColor: colors.secondaryButton,
+              foregroundColor: colors.secondaryButtonText,
+              textStyle: const TextStyle(
+                fontWeight: FontWeight.w700,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(30),
               ),
             ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: widget.onViewProfile,
+                  icon: const Icon(Icons.visibility_outlined),
+                  label: const Text('Ver perfil'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 44),
+                    backgroundColor: colors.primaryButton,
+                    foregroundColor: colors.primaryButtonText,
+                    textStyle: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _busy ? null : _handleRemove,
+                  icon: _busy
+                      ? SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: colors.emergencyText,
+                          ),
+                        )
+                      : const Icon(Icons.link_off),
+                  label: Text(_busy ? 'Quitando...' : 'Desvincular'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 44),
+                    backgroundColor: colors.emergency,
+                    foregroundColor: colors.emergencyText,
+                    textStyle: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 }
-
-
-
-
-

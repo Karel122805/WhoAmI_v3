@@ -11,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import 'package:whoami_app/src/core/services/fcm_token_service.dart';
+import 'package:whoami_app/src/core/tutorial/tutorial_keys.dart';
+import 'package:whoami_app/src/core/tutorial/tutorial_manager.dart';
 
 import 'package:whoami_app/src/core/widgets/brand_logo.dart';
 import 'package:whoami_app/src/core/theme/app_theme.dart';
@@ -57,6 +59,14 @@ class _LoginPageState extends State<LoginPage> {
     super.initState();
     _prepareAuthForWeb();
     _loadCooldowns().then((_) => _startResetCountdownIfNeeded());
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await TutorialManager.maybeShow(
+        context,
+        TutorialKey.login,
+      );
+    });
   }
 
   @override
@@ -741,6 +751,8 @@ class _LoginPageState extends State<LoginPage> {
             : 1.0;
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
+      backgroundColor: colors.pageBackground,
       appBar: AppBar(
         backgroundColor: colors.pageBackground,
         surfaceTintColor: Colors.transparent,
@@ -748,6 +760,8 @@ class _LoginPageState extends State<LoginPage> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: colors.textPrimary),
           onPressed: () {
+            FocusManager.instance.primaryFocus?.unfocus();
+
             if (Navigator.canPop(context)) {
               Navigator.pop(context);
             } else {
@@ -770,12 +784,24 @@ class _LoginPageState extends State<LoginPage> {
         centerTitle: true,
       ),
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Form(
+        child: LayoutBuilder(
+          builder: (
+            BuildContext context,
+            BoxConstraints constraints,
+          ) {
+            return SingleChildScrollView(
+              keyboardDismissBehavior:
+                  ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - 32,
+                ),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: Form(
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -902,10 +928,11 @@ class _LoginPageState extends State<LoginPage> {
                         height: 52,
                         child: OutlinedButton.icon(
                           onPressed: _loading ? null : _signInWithGoogle,
-                          icon: Icon(
-                            Icons.g_mobiledata,
-                            size: 28,
-                            color: colors.textPrimary,
+                          icon: Image.asset(
+                            'assets/google_logo.png',
+                            width: 24,
+                            height: 24,
+                            fit: BoxFit.contain,
                           ),
                           label: Text(
                             'Continuar con Google',
@@ -918,12 +945,48 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
 
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 20),
+
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '¿No tienes una cuenta?',
+                          style: TextStyle(
+                            color: colors.textSecondary,
+                            fontSize: 14,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _loading
+                              ? null
+                              : () {
+                                  Navigator.pushNamed(
+                                    context,
+                                    RegisterNamePage.route,
+                                  );
+                                },
+                          child: Text(
+                            'Crear una',
+                            style: TextStyle(
+                              color: colors.primaryButton,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 12),
                   ],
                 ),
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );

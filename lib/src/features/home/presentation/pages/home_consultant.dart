@@ -4,21 +4,26 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'package:whoami_app/src/core/theme/app_theme.dart';
-import 'package:whoami_app/src/core/widgets/user_avatar.dart';
 
-import 'package:whoami_app/src/features/tips/presentation/pages/tips_page.dart';
+import 'package:whoami_app/src/core/tutorial/tutorial_manager.dart';
+
 import 'package:whoami_app/src/features/memories/presentation/pages/calendar_page.dart';
 import 'package:whoami_app/src/features/games/presentation/pages/game_page.dart'
     as games;
 import 'package:whoami_app/src/features/phrases/presentation/pages/motivational_phrases_page.dart';
 import 'package:whoami_app/src/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
+import 'package:whoami_app/src/features/preventive_info/presentation/preventive_info_screen.dart';
 
 import 'package:whoami_app/src/features/memories/data/memories_scheduler.dart';
 import 'package:whoami_app/src/features/notifications/data/notifications_service.dart';
+import 'package:whoami_app/src/features/patients/data/patients_service.dart';
 
 class HomeConsultantPage extends StatefulWidget {
-  const HomeConsultantPage({super.key, this.displayName});
+  const HomeConsultantPage({
+    super.key,
+    this.displayName,
+  });
 
   static const route = '/home/consultant';
 
@@ -30,69 +35,340 @@ class HomeConsultantPage extends StatefulWidget {
 
 class _HomeConsultantPageState extends State<HomeConsultantPage> {
   bool _hasCaregiver = false;
+  bool _checkingRequest = false;
+
+  late final PatientsService _patientsService;
 
   @override
   void initState() {
     super.initState();
-    _initializeHome();
+
+    _patientsService = PatientsService(
+      FirebaseFirestore.instance,
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) async {
+        if (!mounted) {
+          return;
+        }
+
+        await _initializeHome();
+
+        if (!mounted) {
+          return;
+        }
+
+        await TutorialManager.maybeShowConsultantHome(
+          context,
+        );
+      },
+    );
   }
 
   Future<void> _initializeHome() async {
-    await NotificationsService.ensureInitialized();
+    try {
+      await NotificationsService.ensureInitialized();
 
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
 
-    if (uid != null) {
-      await MemoriesScheduler.scheduleAllForUser(uid);
-      await _checkCaregiver(uid);
+      if (uid != null) {
+        await MemoriesScheduler.scheduleAllForUser(uid);
+        await _checkCaregiver(uid);
+        await _checkPendingCaregiverRequests(uid);
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Error inicializando la pantalla del consultante: $error');
+      debugPrint(stackTrace.toString());
     }
   }
 
   Future<void> _checkCaregiver(String uid) async {
     try {
-      final doc =
-          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final document = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
 
-      final data = doc.data();
+      final data = document.data();
+
+      final caregiverId = data?['caregiverId']?.toString().trim();
 
       if (!mounted) return;
 
       setState(() {
-        _hasCaregiver = data != null &&
-            data['caregiverId'] != null &&
-            data['caregiverId'] != '';
+        _hasCaregiver = caregiverId != null && caregiverId.isNotEmpty;
       });
-    } catch (e) {
-      debugPrint('Error comprobando cuidador: $e');
+    } catch (error, stackTrace) {
+      debugPrint('Error comprobando cuidador: $error');
+      debugPrint(stackTrace.toString());
 
       if (!mounted) return;
 
-      setState(() => _hasCaregiver = false);
+      setState(() {
+        _hasCaregiver = false;
+      });
     }
   }
 
-  Future<void> _openNotifications() async {
-    await Navigator.pushNamed(context, NotificationsPage.route);
+  Future<void> _checkPendingCaregiverRequests(String uid) async {
+    if (_checkingRequest) return;
+
+    _checkingRequest = true;
+
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+
+      if (currentUser == null || currentUser.uid != uid) {
+        return;
+      }
+
+      final requestSnapshot = await FirebaseFirestore.instance
+          .collection('caregiver_patient_requests')
+          .where('patientId', isEqualTo: uid)
+          .where('status', isEqualTo: 'pending')
+          .limit(1)
+          .get();
+
+      if (!mounted) return;
+
+      if (requestSnapshot.docs.isEmpty) {
+        return;
+      }
+
+      final requestDoc = requestSnapshot.docs.first;
+      final requestData = requestDoc.data();
+
+      final caregiverName = (requestData['caregiverName'] ?? 'Un cuidador')
+          .toString()
+          .trim();
+
+      await _showCaregiverRequestDialog(
+        requestId: requestDoc.id,
+        patientId: uid,
+        caregiverName: caregiverName.isEmpty ? 'Un cuidador' : caregiverName,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Error revisando solicitudes de cuidador: $error');
+      debugPrint(stackTrace.toString());
+    } finally {
+      _checkingRequest = false;
+    }
   }
 
-  Future<void> _sendEmergencyAlert() async {
+  Future<void> _showCaregiverRequestDialog({
+  required String requestId,
+  required String patientId,
+  required String caregiverName,
+}) async {
+  if (!mounted) return;
+
+  final colors = context.appColors;
+
+  final result = await showDialog<String>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) {
+      return AlertDialog(
+        backgroundColor: colors.elevatedCard,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: Text(
+          'Solicitud de vinculación',
+          style: TextStyle(
+            color: colors.textPrimary,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        content: Text(
+          '$caregiverName desea vincularse contigo para brindarte apoyo y consultar la información de tu perfil de paciente.\n\n'
+          'Solo si aceptas esta solicitud podrá acceder a tu información. Puedes aceptar, rechazar o decidir más tarde.',
+          style: TextStyle(
+            color: colors.textPrimary,
+            height: 1.35,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'later'),
+            child: Text(
+              'Después',
+              style: TextStyle(
+                color: colors.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'reject'),
+            child: Text(
+              'Rechazar',
+              style: TextStyle(
+                color: colors.emergency,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.primaryButton,
+              foregroundColor: colors.primaryButtonText,
+              shape: const StadiumBorder(),
+            ),
+            onPressed: () => Navigator.pop(dialogContext, 'accept'),
+            child: const Text(
+              'Aceptar',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+
+  if (!mounted) return;
+
+  if (result == 'later') {
+    await _showInfoDialog(
+      title: 'Solicitud pendiente',
+      message:
+          'El mensaje se mostrará cuando vuelvas a entrar a la aplicación con esta cuenta.',
+    );
+    return;
+  }
+
+  if (result == 'accept') {
+    try {
+      await _patientsService.acceptPatientRequest(
+        requestId: requestId,
+        patientUserId: patientId,
+      );
+
+      await _checkCaregiver(patientId);
+
+      if (!mounted) return;
+
+      await _showInfoDialog(
+        title: 'Solicitud aceptada',
+        message:
+            'El cuidador ya está vinculado a tu cuenta y podrá consultar tu información de paciente.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      await _showInfoDialog(
+        title: 'Error',
+        message: 'No se pudo aceptar la solicitud:\n$error',
+      );
+    }
+
+    return;
+  }
+
+  if (result == 'reject') {
+    try {
+      await _patientsService.rejectPatientRequest(
+        requestId: requestId,
+        patientUserId: patientId,
+      );
+
+      if (!mounted) return;
+
+      await _showInfoDialog(
+        title: 'Solicitud rechazada',
+        message: 'La solicitud de vinculación fue rechazada.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      await _showInfoDialog(
+        title: 'Error',
+        message: 'No se pudo rechazar la solicitud:\n$error',
+      );
+    }
+  }
+}
+
+  Future<void> _showInfoDialog({
+    required String title,
+    required String message,
+  }) async {
+    if (!mounted) return;
+
+    final colors = context.appColors;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: colors.elevatedCard,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text(
+            title,
+            style: TextStyle(
+              color: colors.textPrimary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          content: Text(
+            message,
+            style: TextStyle(
+              color: colors.textPrimary,
+              height: 1.35,
+            ),
+          ),
+          actions: [
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: colors.primaryButton,
+                foregroundColor: colors.primaryButtonText,
+                shape: const StadiumBorder(),
+              ),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text(
+                'Aceptar',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.pushNamed(
+      context,
+      NotificationsPage.route,
+    );
+  }
+    Future<void> _sendEmergencyAlert() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
 
-      if (user == null) return;
+      if (user == null) {
+        return;
+      }
 
-      final userDoc = await FirebaseFirestore.instance
+      final userDocument = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .get();
 
-      final data = userDoc.data() ?? {};
-      final caregiverId = data['caregiverId'];
+      final data = userDocument.data() ?? <String, dynamic>{};
+
+      final caregiverId = data['caregiverId']?.toString().trim();
 
       if (caregiverId == null || caregiverId.isEmpty) {
         if (!mounted) return;
 
-        setState(() => _hasCaregiver = false);
+        setState(() {
+          _hasCaregiver = false;
+        });
+
         return;
       }
 
@@ -108,34 +384,39 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
         }
       }
 
-      final pos = await Geolocator.getCurrentPosition(
+      final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
         ),
       );
 
-      final fullName =
-          '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'.trim();
+      final firstName = data['firstName']?.toString().trim() ?? '';
+      final lastName = data['lastName']?.toString().trim() ?? '';
+
+      final fullName = [
+        firstName,
+        lastName,
+      ].where((value) => value.isNotEmpty).join(' ');
 
       final name = fullName.isEmpty ? 'Tu consultante' : fullName;
 
-      final emergencyRef =
+      final emergencyReference =
           FirebaseFirestore.instance.collection('emergencies').doc();
 
-      await emergencyRef.set({
+      await emergencyReference.set({
         'consultantId': user.uid,
         'caregiverId': caregiverId,
         'consultantName': name,
-        'lat': pos.latitude,
-        'lng': pos.longitude,
+        'lat': position.latitude,
+        'lng': position.longitude,
         'title': 'Emergencia detectada',
         'body': '$name necesita ayuda.',
         'timestamp': FieldValue.serverTimestamp(),
-        'active': true,
-      });
-
-      await emergencyRef.update({
         'triggeredAt': FieldValue.serverTimestamp(),
+        'active': true,
+        'read': false,
+        'deleted': false,
+        'resolved': false,
       });
 
       await FirebaseFirestore.instance
@@ -146,11 +427,16 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
         'title': 'Emergencia detectada',
         'body': '$name necesita ayuda.',
         'type': 'emergency',
+        'emergencyId': emergencyReference.id,
         'consultantId': user.uid,
-        'lat': pos.latitude,
-        'lng': pos.longitude,
+        'consultantName': name,
+        'lat': position.latitude,
+        'lng': position.longitude,
         'timestamp': FieldValue.serverTimestamp(),
         'read': false,
+        'deleted': false,
+        'completed': false,
+        'active': true,
       });
 
       await NotificationsService.showEmergencyAlert(
@@ -160,141 +446,20 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
 
       if (!mounted) return;
 
-      final colors = context.appColors;
-      final dialogBg = colors.elevatedCard;
-      final onBg = colors.textPrimary;
-      final onBgMuted = colors.textSecondary;
-
-      final emergencyBorder =
-          context.isDark ? const Color(0xFFD4767B) : const Color(0xFFFF9FA1);
-
-      final emergencyFill =
-          context.isDark ? const Color(0xFF4B2A30) : const Color(0xFFFFE0E2);
-
-      final emergencyIcon =
-          context.isDark ? const Color(0xFFFFA6AC) : const Color(0xFFFF7E86);
-
-      showDialog(
-        context: context,
-        builder: (_) {
-          return Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: const EdgeInsets.symmetric(
-              horizontal: 24,
-              vertical: 24,
-            ),
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: dialogBg,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: emergencyBorder, width: 2),
-                boxShadow: [
-                  BoxShadow(
-                    color: context.isDark
-                        ? Colors.black.withValues(alpha: 0.28)
-                        : Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: emergencyFill,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.warning_amber_rounded,
-                      color: emergencyIcon,
-                      size: 48,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Alerta enviada',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: onBg,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Tu cuidador ha sido notificado con tu ubicación en tiempo real.\n'
-                    'Mantén la calma, la ayuda está en camino.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 15,
-                      height: 1.3,
-                      color: onBgMuted,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor:
-                            context.isDark ? colors.secondaryButton : kPurple,
-                        foregroundColor: context.isDark
-                            ? colors.secondaryButtonText
-                            : Colors.black,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        elevation: 0,
-                      ),
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text(
-                        'Entendido',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
+      await _showInfoDialog(
+        title: 'Alerta enviada',
+        message:
+            'Tu cuidador ha sido notificado con tu ubicación en tiempo real.\n\nMantén la calma, la ayuda está en camino.',
       );
-    } catch (e) {
-      debugPrint('Error al enviar emergencia: $e');
+    } catch (error, stackTrace) {
+      debugPrint('Error al enviar emergencia: $error');
+      debugPrint(stackTrace.toString());
 
       if (!mounted) return;
 
-      final colors = context.appColors;
-
-      showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          backgroundColor: colors.elevatedCard,
-          title: Text(
-            'Error',
-            style: TextStyle(color: colors.textPrimary),
-          ),
-          content: Text(
-            'Ocurrió un error al enviar la alerta:\n$e',
-            style: TextStyle(color: colors.textPrimary),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Cerrar',
-                style: TextStyle(color: colors.primaryButton),
-              ),
-            ),
-          ],
-        ),
+      await _showInfoDialog(
+        title: 'Error',
+        message: 'Ocurrió un error al enviar la alerta:\n$error',
       );
     }
   }
@@ -308,36 +473,49 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
+            constraints: const BoxConstraints(
+              maxWidth: 420,
+            ),
             child: SingleChildScrollView(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.only(top: 4),
+                      padding: const EdgeInsets.only(
+                        top: 4,
+                      ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           IconButton(
                             onPressed: () {
-                              Navigator.pushNamed(context, '/settings');
+                              Navigator.pushNamed(
+                                context,
+                                '/settings',
+                              );
                             },
                             icon: Icon(
                               Icons.settings,
                               color: colors.textPrimary,
                               size: 28,
                             ),
+                            tooltip: 'Ajustes',
                           ),
                           StreamBuilder<int>(
                             stream: NotificationsService
-                                .watchUnreadAppNotificationCount(),
-                            builder: (context, snapshot) {
+                                .watchUnreadNotificationsCountForCurrentUser(),
+                            builder: (
+                              context,
+                              snapshot,
+                            ) {
                               final loading =
                                   snapshot.connectionState ==
-                                      ConnectionState.waiting &&
-                                  !snapshot.hasData;
+                                          ConnectionState.waiting &&
+                                      !snapshot.hasData;
 
                               final count = snapshot.data ?? 0;
 
@@ -351,15 +529,19 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                         ],
                       ),
                     ),
-                    const UserAvatar(radius: 60),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 20),
                     StreamBuilder<User?>(
                       stream: FirebaseAuth.instance.userChanges(),
-                      builder: (context, authSnap) {
-                        final user =
-                            authSnap.data ?? FirebaseAuth.instance.currentUser;
+                      builder: (
+                        context,
+                        authSnapshot,
+                      ) {
+                        final user = authSnapshot.data ??
+                            FirebaseAuth.instance.currentUser;
 
-                        if (user == null) return const SizedBox();
+                        if (user == null) {
+                          return const SizedBox.shrink();
+                        }
 
                         final uid = user.uid;
 
@@ -369,26 +551,49 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                               .collection('users')
                               .doc(uid)
                               .snapshots(),
-                          builder: (context, docSnap) {
+                          builder: (
+                            context,
+                            documentSnapshot,
+                          ) {
                             String name = 'Usuario';
 
-                            if (docSnap.hasData &&
-                                docSnap.data!.data() != null) {
-                              final data = docSnap.data!.data()!;
+                            final data = documentSnapshot.data?.data();
 
-                              final first =
-                                  (data['firstName'] as String?)?.trim() ?? '';
+                            if (data != null) {
+                              final firstName =
+                                  data['firstName']?.toString().trim() ?? '';
 
-                              final last =
-                                  (data['lastName'] as String?)?.trim() ?? '';
+                              final lastName =
+                                  data['lastName']?.toString().trim() ?? '';
 
-                              final fsName = [first, last]
-                                  .where((item) => item.isNotEmpty)
-                                  .join(' ');
+                              final firestoreName = [
+                                firstName,
+                                lastName,
+                              ].where((value) => value.isNotEmpty).join(' ');
 
-                              if (fsName.isNotEmpty) {
-                                name = fsName;
+                              if (firestoreName.isNotEmpty) {
+                                name = firestoreName;
                               }
+                            }
+
+                            if (name == 'Usuario') {
+                              final displayName = user.displayName?.trim() ?? '';
+
+                              if (displayName.isNotEmpty) {
+                                name = displayName;
+                              }
+                            }
+
+                            if (name == 'Usuario') {
+                              final email = user.email ?? '';
+
+                              if (email.contains('@')) {
+                                name = email.split('@').first;
+                              }
+                            }
+
+                            if (name.trim().isEmpty) {
+                              name = widget.displayName ?? 'Usuario';
                             }
 
                             return Text(
@@ -407,22 +612,11 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                     const SizedBox(height: 8),
                     Text(
                       'Selecciona una opción',
-                      style: TextStyle(color: colors.textSecondary),
+                      style: TextStyle(
+                        color: colors.textSecondary,
+                      ),
                     ),
                     const SizedBox(height: 20),
-                    _PillButton(
-                      color: context.isDark ? colors.primaryButton : kBlue,
-                      icon: Icons.menu_book_outlined,
-                      text: 'Consejos',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const TipsPage(),
-                          ),
-                        );
-                      },
-                    ),
                     _PillButton(
                       color: context.isDark ? colors.primaryButton : kBlue,
                       icon: Icons.auto_stories_outlined,
@@ -433,6 +627,17 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                           MaterialPageRoute(
                             builder: (_) => const MotivationalPhrasesPage(),
                           ),
+                        );
+                      },
+                    ),
+                    _PillButton(
+                      color: context.isDark ? colors.primaryButton : kBlue,
+                      icon: Icons.health_and_safety_outlined,
+                      text: 'Prevención',
+                      onTap: () {
+                        Navigator.pushNamed(
+                          context,
+                          PreventiveInfoScreen.route,
                         );
                       },
                     ),
@@ -454,7 +659,10 @@ class _HomeConsultantPageState extends State<HomeConsultantPage> {
                       icon: Icons.alarm_rounded,
                       text: 'Recordatorios',
                       onTap: () {
-                        Navigator.pushNamed(context, '/reminders');
+                        Navigator.pushNamed(
+                          context,
+                          '/reminders',
+                        );
                       },
                     ),
                     _PillButton(
@@ -536,10 +744,15 @@ class _NotificationBell extends StatelessWidget {
         IconButton(
           onPressed: loading ? null : onTap,
           icon: Icon(
-            Icons.notifications_none_rounded,
+            showBadge
+                ? Icons.notifications_active_rounded
+                : Icons.notifications_none_rounded,
             color: colors.textPrimary,
             size: 28,
           ),
+          tooltip: showBadge
+              ? '$count notificaciones no leídas'
+              : 'Notificaciones',
         ),
         if (loading)
           Positioned(
@@ -566,6 +779,10 @@ class _NotificationBell extends StatelessWidget {
               decoration: BoxDecoration(
                 color: context.isDark ? const Color(0xFFC35B5B) : Colors.red,
                 borderRadius: BorderRadius.circular(12),
+              ),
+              constraints: const BoxConstraints(
+                minWidth: 20,
+                minHeight: 18,
               ),
               alignment: Alignment.center,
               child: Text(
@@ -599,10 +816,13 @@ class _PillButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+
     final buttonTextColor = context.isDark ? Colors.white : colors.textPrimary;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(
+        vertical: 8,
+      ),
       child: SizedBox(
         width: double.infinity,
         height: 56,
@@ -617,14 +837,22 @@ class _PillButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 24, color: buttonTextColor),
+              Icon(
+                icon,
+                size: 24,
+                color: buttonTextColor,
+              ),
               const SizedBox(width: 12),
-              Text(
-                text,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: buttonTextColor,
+              Flexible(
+                child: Text(
+                  text,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: buttonTextColor,
+                  ),
                 ),
               ),
             ],

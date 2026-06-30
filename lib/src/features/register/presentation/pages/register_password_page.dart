@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import 'package:whoami_app/src/core/widgets/brand_logo.dart';
 import 'package:whoami_app/src/core/theme/app_theme.dart';
+import 'package:whoami_app/src/core/tutorial/tutorial_keys.dart';
+import 'package:whoami_app/src/core/tutorial/tutorial_manager.dart';
 import 'register_role_page.dart';
 
 class RegisterPasswordPage extends StatefulWidget {
@@ -27,6 +29,38 @@ class _RegisterPasswordPageState extends State<RegisterPasswordPage> {
   Color _passColor = Colors.grey;
 
   bool _didRedirect = false;
+  bool _tutorialScheduled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_tutorialScheduled) {
+      return;
+    }
+
+    _tutorialScheduled = true;
+
+    final prev =
+        (ModalRoute.of(context)?.settings.arguments as Map?) ?? <dynamic, dynamic>{};
+
+    final fromGoogle = prev['fromGoogle'] == true;
+
+    if (fromGoogle) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        return;
+      }
+
+      await TutorialManager.maybeShow(
+        context,
+        TutorialKey.registerPassword,
+      );
+    });
+  }
 
   String? _emailRule(String? v) {
     final s = v?.trim() ?? '';
@@ -161,19 +195,20 @@ class _RegisterPasswordPageState extends State<RegisterPasswordPage> {
       );
     }
 
-    return MediaQuery(
-      data: MediaQuery.of(context)
-          .copyWith(textScaler: const TextScaler.linear(1.0)),
-      child: Scaffold(
-        backgroundColor: colors.pageBackground,
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      backgroundColor: colors.pageBackground,
         appBar: AppBar(
           backgroundColor: colors.pageBackground,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
-          leading: IconButton(
-            icon: Icon(Icons.arrow_back, color: colors.textPrimary),
-            onPressed: () => Navigator.maybePop(context),
-          ),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: colors.textPrimary),
+          onPressed: () {
+            FocusManager.instance.primaryFocus?.unfocus();
+            Navigator.maybePop(context);
+          },
+        ),
           centerTitle: true,
           title: Text(
             'Regístrate',
@@ -184,13 +219,16 @@ class _RegisterPasswordPageState extends State<RegisterPasswordPage> {
             ),
           ),
         ),
-        body: SafeArea(
-          child: Center(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          keyboardDismissBehavior:
+              ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+          child: Align(
+            alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Form(
+              child: Form(
                   key: _formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -273,7 +311,12 @@ class _RegisterPasswordPageState extends State<RegisterPasswordPage> {
                           child: FilledButton(
                             style: pillBlue(context),
                             onPressed: () {
-                              if (!_formKey.currentState!.validate()) return;
+                              FocusManager.instance.primaryFocus?.unfocus();
+
+                              if (!_formKey.currentState!.validate()) {
+                                return;
+                              }
+
                               Navigator.pushNamed(
                                 context,
                                 RegisterRolePage.route,
@@ -301,8 +344,7 @@ class _RegisterPasswordPageState extends State<RegisterPasswordPage> {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 

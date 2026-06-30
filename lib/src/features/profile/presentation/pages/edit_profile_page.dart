@@ -25,6 +25,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
   final _phoneCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
 
+  final _genderCtrl = TextEditingController();
+  final _diagnosisCtrl = TextEditingController();
+  final _stageCtrl = TextEditingController();
+  final _bloodTypeCtrl = TextEditingController();
+  final _allergiesCtrl = TextEditingController();
+  final _medicationsCtrl = TextEditingController();
+  final _doctorNameCtrl = TextEditingController();
+  final _doctorPhoneCtrl = TextEditingController();
+  final _medicalNotesCtrl = TextEditingController();
+
   bool _loading = true;
   bool _saving = false;
   bool _dirty = false;
@@ -34,6 +44,32 @@ class _EditProfilePageState extends State<EditProfilePage> {
   File? _localPhoto;
 
   Map<String, String?> _original = {};
+
+  final List<String> _genderOptions = const [
+    'Masculino',
+    'Femenino',
+    'Otro',
+    'Prefiero no decirlo',
+  ];
+
+  final List<String> _stageOptions = const [
+    'Leve',
+    'Moderada',
+    'Avanzada',
+    'No especificada',
+  ];
+
+  final List<String> _bloodTypeOptions = const [
+    'A+',
+    'A-',
+    'B+',
+    'B-',
+    'AB+',
+    'AB-',
+    'O+',
+    'O-',
+    'No especificado',
+  ];
 
   @override
   void initState() {
@@ -239,6 +275,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
           .get();
 
       final data = snap.data() ?? <String, dynamic>{};
+      final medicalInfo = data['medicalInfo'] is Map
+          ? Map<String, dynamic>.from(data['medicalInfo'])
+          : <String, dynamic>{};
 
       _firstName.text = _safeString(data['firstName']);
       _lastName.text = _safeString(data['lastName']);
@@ -247,6 +286,17 @@ class _EditProfilePageState extends State<EditProfilePage> {
           : (user.email ?? '');
       _phoneCtrl.text = _safeString(data['phone']);
       _addressCtrl.text = _safeString(data['address']);
+
+      _genderCtrl.text = _safeString(data['gender']);
+
+      _diagnosisCtrl.text = _safeString(medicalInfo['diagnosis']);
+      _stageCtrl.text = _safeString(medicalInfo['stage']);
+      _bloodTypeCtrl.text = _safeString(medicalInfo['bloodType']);
+      _allergiesCtrl.text = _safeString(medicalInfo['allergies']);
+      _medicationsCtrl.text = _safeString(medicalInfo['medications']);
+      _doctorNameCtrl.text = _safeString(medicalInfo['doctorName']);
+      _doctorPhoneCtrl.text = _safeString(medicalInfo['doctorPhone']);
+      _medicalNotesCtrl.text = _safeString(medicalInfo['notes']);
 
       _photoUrl = _safeString(data['photoURL']).isNotEmpty
           ? _safeString(data['photoURL'])
@@ -269,6 +319,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'birthDate': _birthDate?.toIso8601String(),
         'phone': _phoneCtrl.text,
         'address': _addressCtrl.text,
+        'gender': _genderCtrl.text,
+        'diagnosis': _diagnosisCtrl.text,
+        'stage': _stageCtrl.text,
+        'bloodType': _bloodTypeCtrl.text,
+        'allergies': _allergiesCtrl.text,
+        'medications': _medicationsCtrl.text,
+        'doctorName': _doctorNameCtrl.text,
+        'doctorPhone': _doctorPhoneCtrl.text,
+        'medicalNotes': _medicalNotesCtrl.text,
       };
 
       _localPhoto = null;
@@ -294,7 +353,17 @@ class _EditProfilePageState extends State<EditProfilePage> {
             _email.text.trim() != (_original['email'] ?? '') ||
             birthIso != _original['birthDate'] ||
             _phoneCtrl.text.trim() != (_original['phone'] ?? '') ||
-            _addressCtrl.text.trim() != (_original['address'] ?? '');
+            _addressCtrl.text.trim() != (_original['address'] ?? '') ||
+            _genderCtrl.text.trim() != (_original['gender'] ?? '') ||
+            _diagnosisCtrl.text.trim() != (_original['diagnosis'] ?? '') ||
+            _stageCtrl.text.trim() != (_original['stage'] ?? '') ||
+            _bloodTypeCtrl.text.trim() != (_original['bloodType'] ?? '') ||
+            _allergiesCtrl.text.trim() != (_original['allergies'] ?? '') ||
+            _medicationsCtrl.text.trim() != (_original['medications'] ?? '') ||
+            _doctorNameCtrl.text.trim() != (_original['doctorName'] ?? '') ||
+            _doctorPhoneCtrl.text.trim() != (_original['doctorPhone'] ?? '') ||
+            _medicalNotesCtrl.text.trim() !=
+                (_original['medicalNotes'] ?? '');
 
     final photoChanged = _localPhoto != null;
     final newDirty = textChanged || photoChanged;
@@ -311,6 +380,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _photoUrl = _original['photo'];
     _phoneCtrl.text = _original['phone'] ?? '';
     _addressCtrl.text = _original['address'] ?? '';
+
+    _genderCtrl.text = _original['gender'] ?? '';
+    _diagnosisCtrl.text = _original['diagnosis'] ?? '';
+    _stageCtrl.text = _original['stage'] ?? '';
+    _bloodTypeCtrl.text = _original['bloodType'] ?? '';
+    _allergiesCtrl.text = _original['allergies'] ?? '';
+    _medicationsCtrl.text = _original['medications'] ?? '';
+    _doctorNameCtrl.text = _original['doctorName'] ?? '';
+    _doctorPhoneCtrl.text = _original['doctorPhone'] ?? '';
+    _medicalNotesCtrl.text = _original['medicalNotes'] ?? '';
 
     final origDob = _original['birthDate'];
     _birthDate = origDob == null ? null : DateTime.tryParse(origDob);
@@ -346,8 +425,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       _recomputeDirty();
     }
   }
-
-  Future<void> _showPhotoViewer() async {
+    Future<void> _showPhotoViewer() async {
     final colors = context.appColors;
     final hasPhoto = _localPhoto != null || (_photoUrl?.isNotEmpty ?? false);
 
@@ -452,8 +530,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ),
               Divider(height: 20, color: colors.border),
               ListTile(
-                leading: Icon(Icons.visibility_outlined,
-                    color: colors.textPrimary),
+                leading: Icon(
+                  Icons.visibility_outlined,
+                  color: colors.textPrimary,
+                ),
                 title: Text(
                   'Ver foto actual',
                   style: TextStyle(
@@ -683,7 +763,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
     if (user.email == null || user.email!.isEmpty) {
       await _showDialogOk(
         title: 'No disponible',
-        message: 'Esta cuenta no tiene correo principal disponible para cambiar.',
+        message:
+            'Esta cuenta no tiene correo principal disponible para cambiar.',
         icon: Icons.error_outline,
         success: false,
       );
@@ -819,6 +900,17 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'email': _email.text.trim(),
         'phone': _phoneCtrl.text.trim(),
         'address': _addressCtrl.text.trim(),
+        'gender': _genderCtrl.text.trim(),
+        'medicalInfo': {
+          'diagnosis': _diagnosisCtrl.text.trim(),
+          'stage': _stageCtrl.text.trim(),
+          'bloodType': _bloodTypeCtrl.text.trim(),
+          'allergies': _allergiesCtrl.text.trim(),
+          'medications': _medicationsCtrl.text.trim(),
+          'doctorName': _doctorNameCtrl.text.trim(),
+          'doctorPhone': _doctorPhoneCtrl.text.trim(),
+          'notes': _medicalNotesCtrl.text.trim(),
+        },
         'updatedAt': Timestamp.now(),
       };
 
@@ -903,6 +995,69 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
+  Widget _buildDropdownField({
+    required TextEditingController controller,
+    required String label,
+    required List<String> options,
+  }) {
+    final colors = context.appColors;
+    final currentValue =
+        options.contains(controller.text.trim()) ? controller.text.trim() : null;
+
+    return DropdownButtonFormField<String>(
+      value: currentValue,
+      isExpanded: true,
+      dropdownColor: colors.elevatedCard,
+      style: TextStyle(color: colors.textPrimary),
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+      ),
+      items: options
+          .map(
+            (option) => DropdownMenuItem<String>(
+              value: option,
+              child: Text(
+                option,
+                style: TextStyle(color: colors.textPrimary),
+              ),
+            ),
+          )
+          .toList(),
+      onChanged: (value) {
+        controller.text = value ?? '';
+        _recomputeDirty();
+      },
+    );
+  }
+
+  Widget _buildSectionTitle({
+    required IconData icon,
+    required String title,
+  }) {
+    final colors = context.appColors;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: colors.primaryButton),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTopActionButton({
     required IconData icon,
     required String text,
@@ -912,8 +1067,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
     return FilledButton.icon(
       onPressed: onPressed,
-      icon: const Icon(
-        Icons.visibility_outlined,
+      icon: Icon(
+        icon,
         color: Colors.black,
         size: 20,
       ),
@@ -938,8 +1093,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       ),
     );
   }
-
-  @override
+    @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final hasPhoto = _localPhoto != null || (_photoUrl?.isNotEmpty ?? false);
@@ -1056,6 +1210,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
                             ],
                           ),
                           const SizedBox(height: 18),
+
+                          _buildSectionTitle(
+                            icon: Icons.person_outline,
+                            title: 'Información personal',
+                          ),
                           _buildTextField(
                             controller: _firstName,
                             label: 'Nombre',
@@ -1086,6 +1245,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
                             readOnly: true,
                           ),
                           const SizedBox(height: 12),
+                          _buildDropdownField(
+                            controller: _genderCtrl,
+                            label: 'Sexo',
+                            options: _genderOptions,
+                          ),
+                          const SizedBox(height: 12),
                           _buildTextField(
                             controller: _email,
                             label: 'Correo electrónico',
@@ -1111,6 +1276,70 @@ class _EditProfilePageState extends State<EditProfilePage> {
                             keyboardType: TextInputType.streetAddress,
                             onChanged: (_) => _recomputeDirty(),
                           ),
+
+                          const SizedBox(height: 18),
+                          Divider(color: colors.border),
+                          _buildSectionTitle(
+                            icon: Icons.medical_information_outlined,
+                            title: 'Información médica',
+                          ),
+                          _buildTextField(
+                            controller: _diagnosisCtrl,
+                            label: 'Enfermedad o diagnóstico principal',
+                            hint: 'Ej. Alzheimer, deterioro cognitivo...',
+                            onChanged: (_) => _recomputeDirty(),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildDropdownField(
+                            controller: _stageCtrl,
+                            label: 'Etapa o estado',
+                            options: _stageOptions,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildDropdownField(
+                            controller: _bloodTypeCtrl,
+                            label: 'Tipo de sangre',
+                            options: _bloodTypeOptions,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildTextField(
+                            controller: _allergiesCtrl,
+                            label: 'Alergias',
+                            hint: 'Ej. Penicilina, alimentos, polvo...',
+                            maxLines: 2,
+                            onChanged: (_) => _recomputeDirty(),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildTextField(
+                            controller: _medicationsCtrl,
+                            label: 'Medicamentos actuales',
+                            hint: 'Ej. Nombre, dosis y horario',
+                            maxLines: 3,
+                            onChanged: (_) => _recomputeDirty(),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildTextField(
+                            controller: _doctorNameCtrl,
+                            label: 'Médico tratante',
+                            hint: 'Nombre del médico',
+                            onChanged: (_) => _recomputeDirty(),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildTextField(
+                            controller: _doctorPhoneCtrl,
+                            label: 'Teléfono del médico',
+                            keyboardType: TextInputType.phone,
+                            onChanged: (_) => _recomputeDirty(),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildTextField(
+                            controller: _medicalNotesCtrl,
+                            label: 'Notas importantes',
+                            hint: 'Indicaciones, cuidados o alertas importantes',
+                            maxLines: 4,
+                            onChanged: (_) => _recomputeDirty(),
+                          ),
+
                           const SizedBox(height: 22),
                           Divider(color: colors.border),
                           const SizedBox(height: 12),
@@ -1237,6 +1466,17 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _ageCtrl.dispose();
     _phoneCtrl.dispose();
     _addressCtrl.dispose();
+
+    _genderCtrl.dispose();
+    _diagnosisCtrl.dispose();
+    _stageCtrl.dispose();
+    _bloodTypeCtrl.dispose();
+    _allergiesCtrl.dispose();
+    _medicationsCtrl.dispose();
+    _doctorNameCtrl.dispose();
+    _doctorPhoneCtrl.dispose();
+    _medicalNotesCtrl.dispose();
+
     super.dispose();
   }
 }
