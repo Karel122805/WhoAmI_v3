@@ -1,48 +1,179 @@
+// lib/src/core/tutorial/tutorial_manager.dart
+
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:whoami_app/src/core/widgets/mascot_intro.dart';
+
 import 'tutorial_keys.dart';
 import 'tutorial_messages.dart';
+import 'tutorial_overlay.dart';
+import 'tutorial_service.dart';
 
 class TutorialManager {
-  static const _prefix = "tutorial_seen_";
+  const TutorialManager._();
 
-  static Future<bool> _hasSeen(TutorialKey key) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool("$_prefix${key.name}") ?? false;
-  }
+  static bool _isOpeningTutorial = false;
 
-  static Future<void> _setSeen(TutorialKey key) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool("$_prefix${key.name}", true);
-  }
+  static Future<void> maybeShowCaregiverHome(
+    BuildContext context,
+  ) async {
+    if (_isOpeningTutorial) {
+      return;
+    }
 
-  static Future<void> maybeShow(BuildContext context, TutorialKey key) async {
-    final seen = await _hasSeen(key);
-    if (seen) return;
+    final hasSeen =
+        await TutorialService.hasSeenCaregiverHome();
 
-    final message = TutorialMessages.getMessage(key);
+    if (hasSeen || !context.mounted) {
+      return;
+    }
 
-    await Future.delayed(const Duration(milliseconds: 300));
+    final steps = TutorialMessages.caregiverHomeSteps();
 
-    showDialog(
+    await _showTutorial(
       context: context,
-      barrierDismissible: false,
-      builder: (_) {
-        return MascotIntro(
-          message: message,
-          onClose: () {
-            Navigator.of(context).pop();
-            _setSeen(key);
-          },
+      steps: steps,
+      onComplete: TutorialService.markCaregiverHomeSeen,
+    );
+  }
+
+  static Future<void> maybeShowConsultantHome(
+    BuildContext context,
+  ) async {
+    if (_isOpeningTutorial) {
+      return;
+    }
+
+    final hasSeen =
+        await TutorialService.hasSeenConsultantHome();
+
+    if (hasSeen || !context.mounted) {
+      return;
+    }
+
+    final steps = TutorialMessages.consultantHomeSteps();
+
+    await _showTutorial(
+      context: context,
+      steps: steps,
+      onComplete: TutorialService.markConsultantHomeSeen,
+    );
+  }
+
+  static Future<void> showCaregiverHomeAgain(
+    BuildContext context,
+  ) async {
+    if (_isOpeningTutorial) {
+      return;
+    }
+
+    await _showTutorial(
+      context: context,
+      steps: TutorialMessages.caregiverHomeSteps(),
+      onComplete: () async {},
+    );
+  }
+
+  static Future<void> showConsultantHomeAgain(
+    BuildContext context,
+  ) async {
+    if (_isOpeningTutorial) {
+      return;
+    }
+
+    await _showTutorial(
+      context: context,
+      steps: TutorialMessages.consultantHomeSteps(),
+      onComplete: () async {},
+    );
+  }
+
+  static Future<void> maybeShow(
+    BuildContext context,
+    TutorialKey key,
+  ) async {
+    if (_isOpeningTutorial) {
+      return;
+    }
+
+    final tutorialName = key.name;
+    final hasSeen = await TutorialService.hasSeen(
+      tutorialName,
+    );
+
+    if (hasSeen || !context.mounted) {
+      return;
+    }
+
+    await _showTutorial(
+      context: context,
+      steps: <TutorialKey>[key],
+      onComplete: () {
+        return TutorialService.markSeen(
+          tutorialName,
         );
       },
     );
   }
+
+  static Future<void> showAgain(
+    BuildContext context,
+    TutorialKey key,
+  ) async {
+    if (_isOpeningTutorial) {
+      return;
+    }
+
+    await _showTutorial(
+      context: context,
+      steps: <TutorialKey>[key],
+      onComplete: () async {},
+    );
+  }
+
+  static Future<void> _showTutorial({
+    required BuildContext context,
+    required List<TutorialKey> steps,
+    required Future<void> Function() onComplete,
+  }) async {
+    if (_isOpeningTutorial ||
+        steps.isEmpty ||
+        !context.mounted) {
+      return;
+    }
+
+    _isOpeningTutorial = true;
+
+    try {
+      await Future<void>.delayed(
+        const Duration(milliseconds: 600),
+      );
+
+      if (!context.mounted) {
+        return;
+      }
+
+      final messages = steps
+          .map(TutorialMessages.getMessage)
+          .toList(growable: false);
+
+      TutorialOverlay.show(
+        context: context,
+        messages: messages,
+        onClose: () async {
+          try {
+            await onComplete();
+          } finally {
+            _isOpeningTutorial = false;
+          }
+        },
+      );
+    } catch (_) {
+      _isOpeningTutorial = false;
+      rethrow;
+    }
+  }
+
+  static void closeCurrentTutorial() {
+    TutorialOverlay.hide();
+    _isOpeningTutorial = false;
+  }
 }
-
-
-
-
-
-

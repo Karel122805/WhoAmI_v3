@@ -2,6 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:whoami_app/src/core/tutorial/tutorial_keys.dart';
+import 'package:whoami_app/src/core/tutorial/tutorial_manager.dart';
+
 import 'package:whoami_app/src/core/widgets/brand_logo.dart';
 import 'package:whoami_app/src/core/theme/app_theme.dart';
 import 'register_password_page.dart';
@@ -29,6 +32,24 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
   String? _photoURL;
 
   bool _argsLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+
+      _loadArgsIfNeeded();
+
+      if (!mounted) return;
+
+      await TutorialManager.maybeShow(
+        context,
+        TutorialKey.registerName,
+      );
+    });
+  }
 
   String _fmt(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
@@ -76,6 +97,8 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
   }
 
   Future<void> _pickDob() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+
     final picked = await showDatePicker(
       context: context,
       locale: const Locale('es', 'MX'),
@@ -118,6 +141,8 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
   }
 
   void _next() {
+    FocusManager.instance.primaryFocus?.unfocus();
+
     final validForm = _formKey.currentState!.validate();
 
     final dob = _parseDob(_dobCtrl.text);
@@ -164,24 +189,23 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
 
   @override
   Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadArgsIfNeeded());
-
     final colors = context.appColors;
     final title = _fromGoogle ? 'Completa tu perfil' : 'Regístrate';
 
-    return MediaQuery(
-      data: MediaQuery.of(context)
-          .copyWith(textScaler: const TextScaler.linear(1.0)),
-      child: Scaffold(
-        backgroundColor: colors.pageBackground,
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      backgroundColor: colors.pageBackground,
         appBar: AppBar(
           backgroundColor: colors.pageBackground,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
-          leading: IconButton(
-            icon: Icon(Icons.arrow_back, color: colors.textPrimary),
-            onPressed: () => Navigator.maybePop(context),
-          ),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: colors.textPrimary),
+          onPressed: () {
+            FocusManager.instance.primaryFocus?.unfocus();
+            Navigator.maybePop(context);
+          },
+        ),
           centerTitle: true,
           title: Text(
             title,
@@ -192,13 +216,16 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
             ),
           ),
         ),
-        body: SafeArea(
-          child: Center(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          keyboardDismissBehavior:
+              ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+          child: Align(
+            alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Form(
+              child: Form(
                   key: _formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -300,8 +327,7 @@ class _RegisterNamePageState extends State<RegisterNamePage> {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 

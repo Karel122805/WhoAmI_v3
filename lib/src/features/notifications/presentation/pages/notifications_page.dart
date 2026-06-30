@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:whoami_app/src/core/theme/app_theme.dart';
 import 'package:whoami_app/src/features/emergency/presentation/pages/emergency_map_page.dart';
+import 'package:whoami_app/src/features/memories/data/memories_scheduler.dart';
 import 'package:whoami_app/src/features/notifications/data/notifications_service.dart';
 
 class NotificationsPage extends StatefulWidget {
@@ -41,6 +42,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
   bool _loading = false;
   bool _selectMode = false;
   bool _resolvingEmergency = false;
+  
+  int _unreadFromService = 0;
 
   @override
   void initState() {
@@ -639,15 +642,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final String memoryPayload =
         '$uid/${document.id}';
 
-    await document.reference.set(
+    await document.reference.update(
       <String, dynamic>{
         'reminder.read': true,
         'reminder.readAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       },
-      SetOptions(
-        merge: true,
-      ),
     );
 
     final QuerySnapshot<Map<String, dynamic>> notificationSnapshot =
@@ -939,6 +939,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
         return;
       }
 
+      // Corrige fechas vencidas y vuelve a registrar en Android cualquier
+      // recordatorio de recuerdo que haya quedado sin programación.
+      await MemoriesScheduler.scheduleAllForUser(uid);
+
       // ========================================================
       // 1. ALARMAS LOCALES
       // ========================================================
@@ -1228,8 +1232,43 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   void _toggleSelectMode() {
     setState(() {
-      _selectMode =
-          !_selectMode;
+      _selectMode = !_selectMode;
+
+      _selectedKeys.removeWhere(
+        (String key) {
+          if (key.startsWith('pending_')) {
+            return true;
+          }
+
+          if (!key.startsWith('memory_')) {
+            return false;
+          }
+
+          final String memoryId = key.replaceFirst(
+            'memory_',
+            '',
+          );
+
+          for (final QueryDocumentSnapshot<Map<String, dynamic>> document
+              in _memoryNotifications) {
+            if (document.id != memoryId) {
+              continue;
+            }
+
+            final dynamic reminderValue =
+                document.data()['reminder'];
+
+            final Map<String, dynamic> reminder =
+                reminderValue is Map
+                    ? Map<String, dynamic>.from(reminderValue)
+                    : <String, dynamic>{};
+
+            return reminder['read'] != true;
+          }
+
+          return true;
+        },
+      );
 
       if (!_selectMode) {
         _selectedKeys.clear();
@@ -1266,20 +1305,27 @@ class _NotificationsPageState extends State<NotificationsPage> {
           );
         },
       ),
-      ..._memoryNotifications.map(
-        (QueryDocumentSnapshot<Map<String, dynamic>> document) {
-          return _memoryKey(
-            document.id,
-          );
-        },
-      ),
-      ..._pendingReminders.map(
-        (PendingNotificationRequest notification) {
-          return _pendingKey(
-            notification.id,
-          );
-        },
-      ),
+      ..._memoryNotifications
+          .where(
+            (QueryDocumentSnapshot<Map<String, dynamic>> document) {
+              final dynamic reminderValue =
+                  document.data()['reminder'];
+
+              final Map<String, dynamic> reminder =
+                  reminderValue is Map
+                      ? Map<String, dynamic>.from(reminderValue)
+                      : <String, dynamic>{};
+
+              return reminder['read'] == true;
+            },
+          )
+          .map(
+            (QueryDocumentSnapshot<Map<String, dynamic>> document) {
+              return _memoryKey(
+                document.id,
+              );
+            },
+          ),
     ];
 
     setState(() {
@@ -1303,22 +1349,56 @@ class _NotificationsPageState extends State<NotificationsPage> {
   // ============================================================
 
   Future<void> _confirmDeleteSelected() async {
-    if (_selectedKeys.isEmpty) {
+    final Set<String> deletableKeys = _selectedKeys.where(
+      (String key) {
+        if (key.startsWith('emergency_') ||
+            key.startsWith('app_')) {
+          return true;
+        }
+
+        if (key.startsWith('memory_')) {
+          final String memoryId = key.replaceFirst(
+            'memory_',
+            '',
+          );
+
+          for (final QueryDocumentSnapshot<Map<String, dynamic>> document
+              in _memoryNotifications) {
+            if (document.id != memoryId) {
+              continue;
+            }
+
+            final dynamic reminderValue =
+                document.data()['reminder'];
+
+            final Map<String, dynamic> reminder =
+                reminderValue is Map
+                    ? Map<String, dynamic>.from(reminderValue)
+                    : <String, dynamic>{};
+
+            return reminder['read'] == true;
+          }
+        }
+
+        return false;
+      },
+    ).toSet();
+
+    if (deletableKeys.isEmpty) {
       await _showOkDialog(
         context,
         title: 'Atención',
         message:
-            'Debes seleccionar al menos una notificación para eliminar.',
+            'Las notificaciones pendientes no se pueden eliminar. '
+            'Primero abre el recuerdo para marcarlo como visto.',
       );
 
       return;
     }
 
-    final int count =
-        _selectedKeys.length;
+    final int count = deletableKeys.length;
 
-    final bool confirmed =
-        await _showDeleteDialog(
+    final bool confirmed = await _showDeleteDialog(
       context,
       message: count == 1
           ? '¿Deseas eliminar esta notificación?'
@@ -1329,32 +1409,23 @@ class _NotificationsPageState extends State<NotificationsPage> {
       return;
     }
 
-    final Set<String> selectedKeys =
-        Set<String>.from(
-      _selectedKeys,
-    );
-
     try {
-      for (final String key in selectedKeys) {
+      for (final String key in deletableKeys) {
         if (key.startsWith('emergency_')) {
-          final String documentId =
-              key.replaceFirst(
+          final String documentId = key.replaceFirst(
             'emergency_',
             '',
           );
 
           if (documentId.isNotEmpty) {
-            await _deleteEmergency(
-              documentId,
-            );
+            await _deleteEmergency(documentId);
           }
 
           continue;
         }
 
         if (key.startsWith('app_')) {
-          final String documentId =
-              key.replaceFirst(
+          final String documentId = key.replaceFirst(
             'app_',
             '',
           );
@@ -1369,63 +1440,17 @@ class _NotificationsPageState extends State<NotificationsPage> {
         }
 
         if (key.startsWith('memory_')) {
-          final String memoryId =
-              key.replaceFirst(
+          final String memoryId = key.replaceFirst(
             'memory_',
             '',
           );
 
-          final String? uid =
-              FirebaseAuth.instance.currentUser?.uid;
+          final String? uid = FirebaseAuth.instance.currentUser?.uid;
 
-          if (uid != null &&
-              memoryId.isNotEmpty) {
+          if (uid != null && memoryId.isNotEmpty) {
             await _deleteMemoryNotification(
               userId: uid,
               memoryId: memoryId,
-            );
-          }
-
-          continue;
-        }
-
-        if (key.startsWith('pending_')) {
-          final String rawId =
-              key.replaceFirst(
-            'pending_',
-            '',
-          );
-
-          final int? notificationId =
-              int.tryParse(
-            rawId,
-          );
-
-          if (notificationId == null) {
-            continue;
-          }
-
-          PendingNotificationRequest?
-              selectedNotification;
-
-          for (final PendingNotificationRequest notification
-              in _pendingReminders) {
-            if (notification.id ==
-                notificationId) {
-              selectedNotification =
-                  notification;
-
-              break;
-            }
-          }
-
-          if (selectedNotification != null) {
-            await _deleteLocalReminder(
-              selectedNotification,
-            );
-          } else {
-            await NotificationsService.cancel(
-              notificationId,
             );
           }
         }
@@ -1491,65 +1516,61 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
     for (final QueryDocumentSnapshot<Map<String, dynamic>> emergency
         in _emergencies) {
-      final Map<String, dynamic> data =
-          emergency.data();
+      final Map<String, dynamic> data = emergency.data();
 
-      final bool read =
-          data['read'] == true;
+      final bool active = data['active'] == true;
+      final bool read = data['read'] == true;
+      final bool deleted = data['deleted'] == true;
+      final bool resolved = data['resolved'] == true;
+      final bool completed = data['completed'] == true;
 
-      final bool deleted =
-          data['deleted'] == true;
-
-      final bool resolved =
-          data['resolved'] == true;
-
-      if (!read &&
+      if (active &&
+          !read &&
           !deleted &&
-          !resolved) {
+          !resolved &&
+          !completed) {
         count++;
       }
     }
 
     for (final QueryDocumentSnapshot<Map<String, dynamic>> notification
         in _appNotifications) {
-      final Map<String, dynamic> data =
-          notification.data();
+      final Map<String, dynamic> data = notification.data();
 
-      final bool read =
-          data['read'] == true;
+      final bool read = data['read'] == true;
+      final bool deleted = data['deleted'] == true;
+      final bool completed = data['completed'] == true;
+      final bool resolved = data['resolved'] == true;
 
-      final bool deleted =
-          data['deleted'] == true;
-
-      final bool completed =
-          data['completed'] == true;
+      final dynamic activeValue = data['active'];
+      final bool inactive = activeValue != null && activeValue == false;
 
       if (!read &&
           !deleted &&
-          !completed) {
+          !completed &&
+          !resolved &&
+          !inactive) {
         count++;
       }
     }
 
     for (final QueryDocumentSnapshot<Map<String, dynamic>> memory
         in _memoryNotifications) {
-      final dynamic reminderValue =
-          memory.data()['reminder'];
+      final dynamic reminderValue = memory.data()['reminder'];
 
       if (reminderValue is Map) {
         final Map<String, dynamic> reminder =
-            Map<String, dynamic>.from(
-          reminderValue,
-        );
+            Map<String, dynamic>.from(reminderValue);
 
-        final bool read =
-            reminder['read'] == true;
+        final bool enabled = reminder['enabled'] == true;
+        final bool read = reminder['read'] == true;
+        final bool deleted = reminder['deleted'] == true;
+        final bool completed = reminder['completed'] == true;
 
-        final bool deleted =
-            reminder['deleted'] == true;
-
-        if (!read &&
-            !deleted) {
+        if (enabled &&
+            !read &&
+            !deleted &&
+            !completed) {
           count++;
         }
       }
@@ -1557,8 +1578,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
     for (final PendingNotificationRequest notification
         in _pendingReminders) {
-      final String payload =
-          notification.payload?.trim() ?? '';
+      final String payload = notification.payload?.trim() ?? '';
 
       if (payload.startsWith('reminder/')) {
         count++;
@@ -2332,7 +2352,18 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
     return GestureDetector(
       onTap: _selectMode
-          ? () {
+          ? () async {
+              if (!isRead) {
+                await _showOkDialog(
+                  context,
+                  title: 'No se puede eliminar',
+                  message:
+                      'Este recuerdo todavía está pendiente. '
+                      'Ábrelo primero para marcarlo como visto.',
+                );
+                return;
+              }
+
               _toggleSelect(
                 key,
               );
@@ -2399,7 +2430,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
               crossAxisAlignment:
                   CrossAxisAlignment.start,
               children: [
-                if (_selectMode) ...[
+                if (_selectMode && isRead) ...[
                   Checkbox(
                     value:
                         selected,
@@ -2416,6 +2447,18 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         key,
                       );
                     },
+                  ),
+                  const SizedBox(
+                    width: 2,
+                  ),
+                ] else if (_selectMode && !isRead) ...[
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Icon(
+                      Icons.lock_outline_rounded,
+                      color: colors.textSecondary,
+                      size: 22,
+                    ),
                   ),
                   const SizedBox(
                     width: 2,
@@ -2493,6 +2536,35 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 height: 1.4,
               ),
             ),
+            if (!isRead) ...[
+              const SizedBox(
+                height: 9,
+              ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 16,
+                    color: colors.textSecondary,
+                  ),
+                  const SizedBox(
+                    width: 6,
+                  ),
+                  Expanded(
+                    child: Text(
+                      'Mientras el recuerdo esté pendiente no puede '
+                      'eliminarse desde Notificaciones.',
+                      style: TextStyle(
+                        color: colors.textSecondary,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             if (nextDate != null) ...[
               const SizedBox(
                 height: 8,
@@ -2541,12 +2613,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         return;
                       }
 
+                      await _loadAll();
+
+                      if (!mounted) {
+                        return;
+                      }
+
                       await _showFirebaseMemoryDialog(
                         context,
                         document,
                       );
-
-                      await _loadAll();
                     } catch (error, stackTrace) {
                       debugPrint(
                         'Error abriendo recuerdo: $error',
@@ -2606,268 +2682,214 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Widget _buildLocalReminderCard(
     PendingNotificationRequest notification,
   ) {
-    final AppColors colors =
-        context.appColors;
+    final AppColors colors = context.appColors;
 
-    final String key =
-        _pendingKey(
-      notification.id,
-    );
+    final String rawTitle = notification.title?.trim() ?? '';
 
-    final bool selected =
-        _selectedKeys.contains(
-      key,
-    );
+    final String title = rawTitle.isNotEmpty
+        ? rawTitle
+        : 'Recordatorio';
 
-    final String rawTitle =
-        notification.title?.trim() ?? '';
+    final String rawBody = notification.body?.trim() ?? '';
 
-    final String title =
-        rawTitle.isNotEmpty
-            ? rawTitle
-            : 'Recordatorio';
+    final String body = rawBody.isNotEmpty
+        ? rawBody
+        : 'Alarma programada en el dispositivo.';
 
-    final String rawBody =
-        notification.body?.trim() ?? '';
-
-    final String body =
-        rawBody.isNotEmpty
-            ? rawBody
-            : 'Alarma programada en el dispositivo.';
-
-    return GestureDetector(
-      onTap: _selectMode
-          ? () {
-              _toggleSelect(
-                key,
-              );
-            }
-          : null,
-      child: AnimatedContainer(
-        duration:
-            const Duration(
-          milliseconds: 200,
+    return AnimatedContainer(
+      duration: const Duration(
+        milliseconds: 200,
+      ),
+      margin: const EdgeInsets.only(
+        bottom: 14,
+      ),
+      padding: const EdgeInsets.all(
+        14,
+      ),
+      decoration: BoxDecoration(
+        color: colors.cardBackground,
+        borderRadius: BorderRadius.circular(
+          18,
         ),
-        margin:
-            const EdgeInsets.only(
-          bottom: 14,
-        ),
-        padding:
-            const EdgeInsets.all(
-          14,
-        ),
-        decoration: BoxDecoration(
-          color: selected
-              ? colors.secondaryButton.withValues(
-                  alpha: 0.14,
-                )
-              : colors.cardBackground,
-          borderRadius:
-              BorderRadius.circular(
-            18,
+        border: Border.all(
+          color: colors.categoryBlue.withValues(
+            alpha: 0.75,
           ),
-          border: Border.all(
-            color: selected
-                ? colors.secondaryButton
-                : colors.categoryBlue.withValues(
-                    alpha: 0.75,
-                  ),
-            width: selected
-                ? 2
-                : 1.4,
-          ),
-          boxShadow: context.isDark
-              ? const <BoxShadow>[]
-              : <BoxShadow>[
-                  BoxShadow(
-                    color: colors.textPrimary.withValues(
-                      alpha: 0.05,
-                    ),
-                    blurRadius: 12,
-                    offset:
-                        const Offset(
-                      0,
-                      4,
-                    ),
-                  ),
-                ],
+          width: 1.4,
         ),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                if (_selectMode) ...[
-                  Checkbox(
-                    value:
-                        selected,
-                    activeColor:
-                        colors.secondaryButton,
-                    checkColor:
-                        colors.secondaryButtonText,
-                    side: BorderSide(
-                      color:
-                          colors.border,
-                    ),
-                    onChanged: (_) {
-                      _toggleSelect(
-                        key,
-                      );
-                    },
+        boxShadow: context.isDark
+            ? const <BoxShadow>[]
+            : <BoxShadow>[
+                BoxShadow(
+                  color: colors.textPrimary.withValues(
+                    alpha: 0.05,
                   ),
-                  const SizedBox(
-                    width: 2,
-                  ),
-                ],
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        colors.categoryBlue.withValues(
-                      alpha: 0.15,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      13,
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.alarm_rounded,
-                    color:
-                        colors.categoryBlue,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(
-                  width: 10,
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          color:
-                              colors.textPrimary,
-                          fontSize: 17,
-                          fontWeight:
-                              FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(
-                        height: 3,
-                      ),
-                      Text(
-                        'Programada',
-                        style: TextStyle(
-                          color:
-                              colors.categoryBlue,
-                          fontSize: 12,
-                          fontWeight:
-                              FontWeight.w700,
-                        ),
-                      ),
-                    ],
+                  blurRadius: 12,
+                  offset: const Offset(
+                    0,
+                    4,
                   ),
                 ),
               ],
-            ),
-            const SizedBox(
-              height: 10,
-            ),
-            Text(
-              body,
-              style: TextStyle(
-                color:
-                    colors.textSecondary,
-                fontSize: 14,
-                height: 1.4,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: colors.categoryBlue.withValues(
+                    alpha: 0.15,
+                  ),
+                  borderRadius: BorderRadius.circular(
+                    13,
+                  ),
+                ),
+                child: Icon(
+                  Icons.alarm_rounded,
+                  color: colors.categoryBlue,
+                  size: 22,
+                ),
               ),
-            ),
-            if (!_selectMode) ...[
               const SizedBox(
-                height: 12,
+                width: 10,
               ),
-              Align(
-                alignment:
-                    Alignment.centerRight,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    try {
-                      await _markLocalReminderAsRead(
-                        notification,
-                      );
-
-                      if (!mounted) {
-                        return;
-                      }
-
-                      await Navigator.pushNamed(
-                        context,
-                        '/reminders',
-                      );
-
-                      if (!mounted) {
-                        return;
-                      }
-
-                      await _loadAll();
-                    } catch (error, stackTrace) {
-                      debugPrint(
-                        'Error abriendo recordatorio: $error',
-                      );
-
-                      debugPrint(
-                        stackTrace.toString(),
-                      );
-
-                      if (!mounted) {
-                        return;
-                      }
-
-                      await _showOkDialog(
-                        context,
-                        title: 'Error',
-                        message:
-                            'No se pudo abrir el recordatorio.',
-                      );
-                    }
-                  },
-                  icon: Icon(
-                    Icons.open_in_new_rounded,
-                    color:
-                        colors.textPrimary,
-                  ),
-                  label: Text(
-                    'Ver alarma',
-                    style: TextStyle(
-                      color:
-                          colors.textPrimary,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: colors.textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                  style:
-                      OutlinedButton.styleFrom(
-                    foregroundColor:
-                        colors.textPrimary,
-                    side: BorderSide(
-                      color:
-                          colors.border,
+                    const SizedBox(
+                      height: 3,
                     ),
-                    shape:
-                        const StadiumBorder(),
+                    Text(
+                      'Programada',
+                      style: TextStyle(
+                        color: colors.categoryBlue,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(
+            height: 10,
+          ),
+          Text(
+            body,
+            style: TextStyle(
+              color: colors.textSecondary,
+              fontSize: 14,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(
+            height: 10,
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.info_outline_rounded,
+                size: 16,
+                color: colors.textSecondary,
+              ),
+              const SizedBox(
+                width: 6,
+              ),
+              Expanded(
+                child: Text(
+                  'Esta alarma no se puede borrar desde Notificaciones. '
+                  'Puedes modificarla o eliminarla desde Recordatorios.',
+                  style: TextStyle(
+                    color: colors.textSecondary,
+                    fontSize: 12,
+                    height: 1.3,
                   ),
                 ),
               ),
             ],
-          ],
-        ),
+          ),
+          const SizedBox(
+            height: 12,
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                try {
+                  await _markLocalReminderAsRead(
+                    notification,
+                  );
+
+                  if (!mounted) {
+                    return;
+                  }
+
+                  await Navigator.pushNamed(
+                    context,
+                    '/reminders',
+                  );
+
+                  if (!mounted) {
+                    return;
+                  }
+
+                  await _loadAll();
+                } catch (error, stackTrace) {
+                  debugPrint(
+                    'Error abriendo recordatorio: $error',
+                  );
+
+                  debugPrint(
+                    stackTrace.toString(),
+                  );
+
+                  if (!mounted) {
+                    return;
+                  }
+
+                  await _showOkDialog(
+                    context,
+                    title: 'Error',
+                    message: 'No se pudo abrir el recordatorio.',
+                  );
+                }
+              },
+              icon: Icon(
+                Icons.open_in_new_rounded,
+                color: colors.textPrimary,
+              ),
+              label: Text(
+                'Ver alarma',
+                style: TextStyle(
+                  color: colors.textPrimary,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: colors.textPrimary,
+                side: BorderSide(
+                  color: colors.border,
+                ),
+                shape: const StadiumBorder(),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

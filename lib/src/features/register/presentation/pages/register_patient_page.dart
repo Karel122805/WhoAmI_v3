@@ -48,36 +48,100 @@ class _RegisterPatientPageState extends State<RegisterPatientPage> {
   }
 
   Future<void> _savePatient() async {
-    if (_selectedPatientId == null || caregiverId == null || _saving) return;
+  if (_selectedPatientId == null || caregiverId == null || _saving) {
+    return;
+  }
 
-    setState(() => _saving = true);
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (ctx) {
+      final colors = ctx.appColors;
 
-    try {
-      await _svc.addPatientToCaregiver(
-        caregiverId: caregiverId!,
-        patientUserId: _selectedPatientId!,
+      return AlertDialog(
+        backgroundColor: colors.cardBackground,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
+        title: Text(
+          'Enviar solicitud',
+          style: TextStyle(
+            color: colors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          'Se enviará una solicitud al consultante para solicitar su autorización.\n\n'
+          'Si el consultante acepta, aparecerá automáticamente en tu lista de pacientes y podrás consultar la información que haya decidido compartir.',
+          style: TextStyle(
+            color: colors.textPrimary,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancelar',
+              style: TextStyle(
+                color: colors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.primaryButton,
+              foregroundColor: colors.primaryButtonText,
+              shape: const StadiumBorder(),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Enviar solicitud',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       );
+    },
+  );
 
-      if (!mounted) return;
-      await _showResultDialog(
-        context,
-        'Hecho',
-        'Paciente agregado correctamente.',
-        closePageOnAccept: true,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      await _showResultDialog(
-        context,
-        'Error',
-        e.toString(),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _saving = false);
-      }
+  if (confirm != true) {
+    return;
+  }
+
+  setState(() => _saving = true);
+
+  try {
+    await _svc.addPatientToCaregiver(
+      caregiverId: caregiverId!,
+      patientUserId: _selectedPatientId!,
+    );
+
+    if (!mounted) return;
+
+    await _showResultDialog(
+      context,
+      'Solicitud enviada',
+      'La solicitud fue enviada correctamente.\n\n'
+      'Cuando el consultante la acepte, aparecerá automáticamente en tu lista de pacientes.',
+      closePageOnAccept: true,
+    );
+  } catch (e) {
+    if (!mounted) return;
+
+    await _showResultDialog(
+      context,
+      'Error',
+      e.toString(),
+    );
+  } finally {
+    if (mounted) {
+      setState(() => _saving = false);
     }
   }
+}
 
   @override
   Widget build(BuildContext context) {

@@ -32,6 +32,7 @@ import 'package:whoami_app/src/features/notifications/data/notifications_service
 import 'package:whoami_app/src/features/notifications/presentation/pages/notifications_page.dart';
 
 import 'package:whoami_app/src/features/patients/presentation/pages/patients_list_page.dart';
+import 'package:whoami_app/src/features/patients/presentation/pages/patient_profile_page.dart';
 
 import 'package:whoami_app/src/features/preventive_info/presentation/preventive_info_screen.dart';
 
@@ -50,6 +51,9 @@ import 'package:whoami_app/src/features/reminders/presentation/pages/reminders_p
 import 'package:whoami_app/src/features/reminders/presentation/providers/reminder_provider.dart';
 
 import 'package:whoami_app/src/features/support_contacts/presentation/support_contacts_screen.dart';
+
+import 'package:whoami_app/src/features/reports/presentation/patient_progress_report_page.dart';
+import 'package:whoami_app/src/features/reports/presentation/activity_summary_report_page.dart';
 
 enum _BreakAction {
   continueUsing,
@@ -866,6 +870,42 @@ class _WhoAmIAppState extends State<WhoAmIApp>
                 context,
               ) {
                 return const RegisterPatientPage();
+              },
+              PatientProfilePage.route: (
+                routeContext,
+              ) {
+                final arguments =
+                    ModalRoute.of(
+                  routeContext,
+                )?.settings.arguments as Map?;
+
+                return PatientProfilePage(
+                  patientId: arguments?['patientId'] as String? ?? '',
+                );
+              },
+              PatientProgressReportPage.route: (
+                routeContext,
+              ) {
+                final arguments =
+                    ModalRoute.of(
+                  routeContext,
+                )?.settings.arguments as Map?;
+
+                return PatientProgressReportPage(
+                  patientId: arguments?['patientId'] as String? ?? '',
+                );
+              },
+              ActivitySummaryReportPage.route: (
+                routeContext,
+              ) {
+                final arguments =
+                    ModalRoute.of(
+                  routeContext,
+                )?.settings.arguments as Map?;
+
+                return ActivitySummaryReportPage(
+                  patientId: arguments?['patientId'] as String? ?? '',
+                );
               },
               GamesPage.route: (
                 context,

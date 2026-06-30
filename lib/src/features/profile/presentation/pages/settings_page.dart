@@ -9,6 +9,7 @@ import 'package:whoami_app/src/features/auth/presentation/pages/choice_start.dar
 import 'package:whoami_app/src/core/widgets/user_avatar.dart';
 import 'package:whoami_app/src/core/theme/app_theme.dart';
 import 'package:whoami_app/src/core/accessibility/accessibility_controller.dart';
+import 'package:whoami_app/src/core/tutorial/tutorial_manager.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.a11y});
@@ -65,6 +66,68 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+  Future<void> _showTutorialAgain() async {
+    final uid = _uid;
+
+    if (uid == null) {
+      return;
+    }
+
+    try {
+      final document = await _db.collection('users').doc(uid).get();
+      final data = document.data() ?? <String, dynamic>{};
+      final role = (data['role'] ?? '').toString().trim();
+
+      if (!mounted) {
+        return;
+      }
+
+      if (role == 'Consultante') {
+        await TutorialManager.showConsultantHomeAgain(context);
+        return;
+      }
+
+      if (role == 'Cuidador') {
+        await TutorialManager.showCaregiverHomeAgain(context);
+        return;
+      }
+
+      final colors = context.appColors;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: colors.elevatedCard,
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            'No se pudo identificar el tipo de cuenta.',
+            style: TextStyle(
+              color: colors.textPrimary,
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      final colors = context.appColors;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: colors.elevatedCard,
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            'No se pudo abrir el tutorial: $error',
+            style: TextStyle(
+              color: colors.textPrimary,
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _logout() async {
     try {
       await FirebaseAuth.instance.signOut();
@@ -781,6 +844,31 @@ class _SettingsPageState extends State<SettingsPage> {
             },
             icon: const Icon(Icons.person_outline),
             label: const Text('Perfil'),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: context.isDark
+                  ? colors.elevatedCard
+                  : colors.secondaryButton,
+              foregroundColor: context.isDark
+                  ? colors.textPrimary
+                  : colors.secondaryButtonText,
+              side: BorderSide(
+                color: colors.border,
+                width: 1.2,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
+            ),
+            onPressed: _showTutorialAgain,
+            icon: const Icon(Icons.school_outlined),
+            label: const Text('Ver tutorial nuevamente'),
           ),
         ),
         const SizedBox(height: 10),

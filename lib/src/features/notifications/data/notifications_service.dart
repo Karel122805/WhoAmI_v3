@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -33,37 +34,26 @@ MemoryCadence cadenceFromString(
   switch (value.toLowerCase().trim()) {
     case 'hourly1':
       return MemoryCadence.hourly1;
-
     case 'hourly2':
       return MemoryCadence.hourly2;
-
     case 'hourly6':
       return MemoryCadence.hourly6;
-
     case 'daily1':
       return MemoryCadence.daily1;
-
     case 'daily2':
       return MemoryCadence.daily2;
-
     case 'weekly':
       return MemoryCadence.weekly;
-
     case 'biweekly':
       return MemoryCadence.biweekly;
-
     case 'monthly':
       return MemoryCadence.monthly;
-
     case 'quarterly':
       return MemoryCadence.quarterly;
-
     case 'semiannual':
       return MemoryCadence.semiannual;
-
     case 'annual':
       return MemoryCadence.annual;
-
     default:
       return MemoryCadence.weekly;
   }
@@ -79,37 +69,20 @@ class NotificationsService {
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
-  static FlutterLocalNotificationsPlugin get plugin =>
-      _plugin;
+  static FlutterLocalNotificationsPlugin get plugin => _plugin;
 
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
 
-  static bool _initialized =
-      false;
+  static bool _initialized = false;
+  static bool _firebaseListenerRegistered = false;
+  static bool _tokenRefreshListenerRegistered = false;
 
-  static bool _firebaseListenerRegistered =
-      false;
-
-  /*
-   * Guarda temporalmente las emergencias que ya fueron
-   * procesadas por esta ejecución de la aplicación.
-   */
-  static final Set<String> _processedEmergencyKeys =
-      <String>{};
-
-  /*
-   * Guarda la fecha en que se procesó cada emergencia.
-   */
+  static final Set<String> _processedEmergencyKeys = <String>{};
   static final Map<String, DateTime> _processedEmergencyTimes =
       <String, DateTime>{};
 
-  /*
-   * Una emergencia con la misma clave no se vuelve a mostrar
-   * durante este periodo.
-   */
-  static const Duration _emergencyDuplicateWindow =
-      Duration(
+  static const Duration _emergencyDuplicateWindow = Duration(
     minutes: 10,
   );
 
@@ -117,12 +90,8 @@ class NotificationsService {
   // CANAL GENERAL
   // ============================================================
 
-  static const String _androidChannelId =
-      'whoami_global';
-
-  static const String _androidChannelName =
-      'Recordatorios y alertas';
-
+  static const String _androidChannelId = 'whoami_global';
+  static const String _androidChannelName = 'Recordatorios y alertas';
   static const String _androidChannelDescription =
       'Canal para recordatorios, mensajes y alertas de la aplicación.';
 
@@ -130,20 +99,25 @@ class NotificationsService {
   // CANAL DE EMERGENCIAS
   // ============================================================
 
-  static const String _emergencyChannelId =
-      'whoami_emergencies';
-
-  static const String _emergencyChannelName =
-      'Alertas de emergencia';
-
+  static const String _emergencyChannelId = 'whoami_emergencies';
+  static const String _emergencyChannelName = 'Alertas de emergencia';
   static const String _emergencyChannelDescription =
       'Canal para alertas importantes de emergencia.';
+  static const String _emergencyGroupKey = 'emergency_group';
 
-  static const String _emergencyGroupKey =
-      'emergency_group';
+  static final Int64List _emergencyVibrationPattern =
+      Int64List.fromList(
+    <int>[
+      0,
+      900,
+      300,
+      900,
+      300,
+      1300,
+    ],
+  );
 
-  static int _nextNotificationId =
-      100000;
+  static int _nextNotificationId = 100000;
 
   // ============================================================
   // GENERAR ID TEMPORAL
@@ -153,8 +127,7 @@ class NotificationsService {
     _nextNotificationId++;
 
     if (_nextNotificationId > 999999) {
-      _nextNotificationId =
-          100000;
+      _nextNotificationId = 100000;
     }
 
     return _nextNotificationId;
@@ -170,35 +143,20 @@ class NotificationsService {
     }
 
     try {
-      final pending =
-          await _plugin.pendingNotificationRequests();
+      final pending = await _plugin.pendingNotificationRequests();
 
-      if (pending.length <= 60) {
-        return;
-      }
-
-      final excess =
-          pending.length - 60;
-
-      for (
-        var index = 0;
-        index < excess;
-        index++
-      ) {
-        await _plugin.cancel(
-          pending[index].id,
+      // No se cancelan recordatorios automáticamente. Antes se eliminaban
+      // elementos al superar 60 pendientes y eso podía borrar una alarma de
+      // recuerdo válida sin avisar al usuario.
+      if (pending.length > 200) {
+        debugPrint(
+          'Advertencia: hay ${pending.length} notificaciones pendientes. '
+          'No se eliminó ninguna para proteger los recordatorios programados.',
         );
       }
-
+    } catch (error, stackTrace) {
       debugPrint(
-        'Se eliminaron $excess notificaciones pendientes antiguas.',
-      );
-    } catch (
-      error,
-      stackTrace
-    ) {
-      debugPrint(
-        'Error limpiando notificaciones pendientes: $error',
+        'Error consultando notificaciones pendientes: $error',
       );
 
       debugPrint(
@@ -217,8 +175,7 @@ class NotificationsService {
     }
 
     if (kIsWeb) {
-      _initialized =
-          true;
+      _initialized = true;
 
       debugPrint(
         'Las notificaciones locales están deshabilitadas en web.',
@@ -246,16 +203,13 @@ class NotificationsService {
 
       const initializationSettings =
           InitializationSettings(
-        android:
-            androidInitializationSettings,
-        iOS:
-            iosInitializationSettings,
+        android: androidInitializationSettings,
+        iOS: iosInitializationSettings,
       );
 
       await _plugin.initialize(
         initializationSettings,
-        onDidReceiveNotificationResponse:
-            (
+        onDidReceiveNotificationResponse: (
           NotificationResponse response,
         ) async {
           await _handleNotificationTap(
@@ -268,66 +222,55 @@ class NotificationsService {
           _plugin.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
 
-      const globalChannel =
-          AndroidNotificationChannel(
+      const globalChannel = AndroidNotificationChannel(
         _androidChannelId,
         _androidChannelName,
-        description:
-            _androidChannelDescription,
-        importance:
-            Importance.max,
-        playSound:
-            true,
-        enableVibration:
-            true,
+        description: _androidChannelDescription,
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
       );
 
-      const emergencyChannel =
-          AndroidNotificationChannel(
+      const emergencyChannel = AndroidNotificationChannel(
         _emergencyChannelId,
         _emergencyChannelName,
-        description:
-            _emergencyChannelDescription,
-        importance:
-            Importance.max,
-        playSound:
-            true,
-        enableVibration:
-            true,
+        description: _emergencyChannelDescription,
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
       );
 
-      await androidPlugin
-          ?.createNotificationChannel(
+      await androidPlugin?.createNotificationChannel(
         globalChannel,
       );
 
-      await androidPlugin
-          ?.createNotificationChannel(
+      await androidPlugin?.createNotificationChannel(
         emergencyChannel,
       );
 
-      await androidPlugin
-          ?.requestNotificationsPermission();
+      await androidPlugin?.requestNotificationsPermission();
+
+      try {
+        await androidPlugin?.requestExactAlarmsPermission();
+      } catch (error) {
+        debugPrint(
+          'No se pudo solicitar permiso de alarmas exactas: $error',
+        );
+      }
 
       await _plugin
           .resolvePlatformSpecificImplementation<
               IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(
-        alert:
-            true,
-        badge:
-            true,
-        sound:
-            true,
-      );
+            alert: true,
+            badge: true,
+            sound: true,
+          );
 
       await FirebaseMessaging.instance.requestPermission(
-        alert:
-            true,
-        badge:
-            true,
-        sound:
-            true,
+        alert: true,
+        badge: true,
+        sound: true,
       );
 
       if (!_firebaseListenerRegistered) {
@@ -335,20 +278,15 @@ class NotificationsService {
           _onFirebaseMessage,
         );
 
-        _firebaseListenerRegistered =
-            true;
+        _firebaseListenerRegistered = true;
       }
 
-      _initialized =
-          true;
+      _initialized = true;
 
       debugPrint(
         'Notificaciones inicializadas correctamente.',
       );
-    } catch (
-      error,
-      stackTrace
-    ) {
+    } catch (error, stackTrace) {
       debugPrint(
         'Error inicializando notificaciones: $error',
       );
@@ -366,6 +304,130 @@ class NotificationsService {
       await init();
     }
   }
+    // ============================================================
+  // GUARDAR TOKEN FCM DEL USUARIO ACTUAL
+  // ============================================================
+
+  static Future<void> saveFcmTokenForCurrentUser() async {
+    if (kIsWeb) {
+      return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return;
+    }
+
+    try {
+      final messaging = FirebaseMessaging.instance;
+
+      final token = await messaging.getToken();
+
+      if (token == null || token.trim().isEmpty) {
+        debugPrint(
+          'No se obtuvo token FCM.',
+        );
+        return;
+      }
+
+      await _saveTokenForUser(
+        uid: user.uid,
+        token: token,
+      );
+
+      if (!_tokenRefreshListenerRegistered) {
+        FirebaseMessaging.instance.onTokenRefresh.listen(
+          (newToken) async {
+            final currentUser = FirebaseAuth.instance.currentUser;
+
+            if (currentUser == null) {
+              return;
+            }
+
+            await _saveTokenForUser(
+              uid: currentUser.uid,
+              token: newToken,
+            );
+          },
+        );
+
+        _tokenRefreshListenerRegistered = true;
+      }
+
+      debugPrint(
+        'Token FCM guardado correctamente.',
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Error guardando token FCM: $error',
+      );
+
+      debugPrint(
+        stackTrace.toString(),
+      );
+    }
+  }
+
+  static Future<void> _saveTokenForUser({
+    required String uid,
+    required String token,
+  }) async {
+    final cleanToken = token.trim();
+
+    if (cleanToken.isEmpty) {
+      return;
+    }
+
+    final firestore = FirebaseFirestore.instance;
+
+    final userReference = firestore.collection('users').doc(uid);
+
+    await userReference.set(
+      {
+        'fcmToken': cleanToken,
+        'fcmTokens': FieldValue.arrayUnion(
+          <String>[
+            cleanToken,
+          ],
+        ),
+        'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(
+        merge: true,
+      ),
+    );
+
+    await userReference
+        .collection('fcm_tokens')
+        .doc(cleanToken)
+        .set(
+      {
+        'token': cleanToken,
+        'platform': defaultTargetPlatform.name,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'active': true,
+      },
+      SetOptions(
+        merge: true,
+      ),
+    );
+  }
+
+  // ============================================================
+  // PROCESAR MENSAJE FCM EN SEGUNDO PLANO / APP CERRADA
+  // ============================================================
+
+  static Future<void> handleBackgroundFirebaseMessage(
+    RemoteMessage message,
+  ) async {
+    await ensureInitialized();
+
+    await _processFirebaseMessage(
+      message,
+      saveEmergencyInFirestore: false,
+    );
+  }
 
   // ============================================================
   // MANEJAR TOQUE EN UNA NOTIFICACIÓN
@@ -374,47 +436,29 @@ class NotificationsService {
   static Future<void> _handleNotificationTap(
     String? payload,
   ) async {
-    final safePayload =
-        payload?.trim() ??
-            '';
+    final safePayload = payload?.trim() ?? '';
 
     if (safePayload.isEmpty) {
       return;
     }
 
-    final normalizedPayload =
-        safePayload.toLowerCase();
+    final normalizedPayload = safePayload.toLowerCase();
 
-    /*
-     * Las emergencias se administran desde la pantalla interna.
-     * Tocar la notificación no vuelve a crear ni guardar nada.
-     */
     if (normalizedPayload == 'emergency' ||
         normalizedPayload == 'emergencia' ||
-        normalizedPayload.startsWith(
-          'emergency/',
-        ) ||
-        normalizedPayload.startsWith(
-          'emergencia/',
-        )) {
+        normalizedPayload.startsWith('emergency/') ||
+        normalizedPayload.startsWith('emergencia/')) {
       return;
     }
 
-    if (normalizedPayload.startsWith(
-      'reminder/',
-    )) {
-      await _openReminderAlarmFromPayload(
-        safePayload,
+    if (normalizedPayload.startsWith('reminder/')) {
+      await markAppNotificationAsRead(
+        'reminder_${safePayload.replaceFirst('reminder/', '').trim()}',
       );
 
       return;
     }
 
-    /*
-     * Los payloads de recuerdos tienen formato:
-     *
-     * uid/memoryId
-     */
     if (safePayload.contains('/')) {
       await markMemoryNotificationAsRead(
         safePayload,
@@ -430,13 +474,12 @@ class NotificationsService {
     String payload,
   ) async {
     try {
-      final reminderId =
-          payload
-              .replaceFirst(
-                'reminder/',
-                '',
-              )
-              .trim();
+      final reminderId = payload
+          .replaceFirst(
+            'reminder/',
+            '',
+          )
+          .trim();
 
       if (reminderId.isEmpty) {
         return;
@@ -446,51 +489,32 @@ class NotificationsService {
         'reminder_$reminderId',
       );
 
-      final document =
-          await FirebaseFirestore.instance
-              .collection(
-                'reminders',
-              )
-              .doc(
-                reminderId,
-              )
-              .get();
+      final document = await FirebaseFirestore.instance
+          .collection('reminders')
+          .doc(reminderId)
+          .get();
 
-      String title =
-          'Recordatorio';
-
+      String title = 'Recordatorio';
       String? description;
 
       if (document.exists) {
-        final data =
-            document.data() ??
-                <String, dynamic>{};
+        final data = document.data() ?? <String, dynamic>{};
 
-        final storedTitle =
-            data['title']
-                ?.toString()
-                .trim();
-
+        final storedTitle = data['title']?.toString().trim();
         final storedDescription =
-            data['description']
-                ?.toString()
-                .trim();
+            data['description']?.toString().trim();
 
-        if (storedTitle != null &&
-            storedTitle.isNotEmpty) {
-          title =
-              storedTitle;
+        if (storedTitle != null && storedTitle.isNotEmpty) {
+          title = storedTitle;
         }
 
         if (storedDescription != null &&
             storedDescription.isNotEmpty) {
-          description =
-              storedDescription;
+          description = storedDescription;
         }
       }
 
-      final navigator =
-          navigatorKey.currentState;
+      final navigator = navigatorKey.currentState;
 
       if (navigator == null) {
         debugPrint(
@@ -503,18 +527,12 @@ class NotificationsService {
       await navigator.pushNamed(
         '/reminder-alarm',
         arguments: {
-          'reminderId':
-              reminderId,
-          'title':
-              title,
-          'description':
-              description,
+          'reminderId': reminderId,
+          'title': title,
+          'description': description,
         },
       );
-    } catch (
-      error,
-      stackTrace
-    ) {
+    } catch (error, stackTrace) {
       debugPrint(
         'Error abriendo alarma de recordatorio: $error',
       );
@@ -524,8 +542,7 @@ class NotificationsService {
       );
     }
   }
-
-  // ============================================================
+    // ============================================================
   // MOSTRAR NOTIFICACIÓN INMEDIATA
   // ============================================================
 
@@ -542,42 +559,27 @@ class NotificationsService {
 
     await _trimPending();
 
-    const androidDetails =
-        AndroidNotificationDetails(
+    const androidDetails = AndroidNotificationDetails(
       _androidChannelId,
       _androidChannelName,
-      channelDescription:
-          _androidChannelDescription,
-      importance:
-          Importance.max,
-      priority:
-          Priority.high,
-      icon:
-          '@mipmap/ic_launcher',
-      playSound:
-          true,
-      enableVibration:
-          true,
-      category:
-          AndroidNotificationCategory.reminder,
+      channelDescription: _androidChannelDescription,
+      importance: Importance.max,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+      playSound: true,
+      enableVibration: true,
+      category: AndroidNotificationCategory.reminder,
     );
 
-    const iosDetails =
-        DarwinNotificationDetails(
-      presentAlert:
-          true,
-      presentBadge:
-          true,
-      presentSound:
-          true,
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
     );
 
-    const notificationDetails =
-        NotificationDetails(
-      android:
-          androidDetails,
-      iOS:
-          iosDetails,
+    const notificationDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
     );
 
     await _plugin.show(
@@ -585,8 +587,7 @@ class NotificationsService {
       title,
       body,
       notificationDetails,
-      payload:
-          payload,
+      payload: payload,
     );
   }
 
@@ -597,119 +598,89 @@ class NotificationsService {
   static Future<void> _onFirebaseMessage(
     RemoteMessage message,
   ) async {
-    final notification =
-        message.notification;
+    await _processFirebaseMessage(
+      message,
+      saveEmergencyInFirestore: false,
+    );
+  }
 
-    final data =
-        message.data;
+  // ============================================================
+  // PROCESAR MENSAJE FCM
+  // ============================================================
 
-    if (notification == null &&
-        data.isEmpty) {
+  static Future<void> _processFirebaseMessage(
+    RemoteMessage message, {
+    required bool saveEmergencyInFirestore,
+  }) async {
+    final notification = message.notification;
+    final data = message.data;
+
+    if (notification == null && data.isEmpty) {
       return;
     }
 
     final title =
         notification?.title ??
-            data['title']?.toString() ??
-            'Notificación';
+        data['title']?.toString() ??
+        'Notificación';
 
     final body =
         notification?.body ??
-            data['body']?.toString() ??
-            '';
+        data['body']?.toString() ??
+        '';
 
     final type =
-        data['type']
-                ?.toString()
-                .toLowerCase()
-                .trim() ??
-            '';
+        data['type']?.toString().toLowerCase().trim() ?? '';
 
     final emergencyValue =
-        data['emergency']
-                ?.toString()
-                .toLowerCase()
-                .trim() ??
-            '';
+        data['emergency']?.toString().toLowerCase().trim() ?? '';
 
     final isEmergency =
         type == 'emergency' ||
-            type == 'emergencia' ||
-            type == 'emergency_alert' ||
-            type == 'panic' ||
-            type == 'panic_alert' ||
-            emergencyValue == 'true';
+        type == 'emergencia' ||
+        type == 'emergency_alert' ||
+        type == 'panic' ||
+        type == 'panic_alert' ||
+        emergencyValue == 'true';
 
     if (isEmergency) {
-      /*
-       * Se intenta utilizar un identificador real de la alerta.
-       * Esto evita generar una nueva notificación cada vez que
-       * llega el mismo evento.
-       */
       final emergencyId =
-          data['emergencyId']
-                  ?.toString()
-                  .trim() ??
-              data['alertId']
-                  ?.toString()
-                  .trim() ??
-              data['notificationId']
-                  ?.toString()
-                  .trim() ??
-              data['documentId']
-                  ?.toString()
-                  .trim() ??
-              message.messageId
-                  ?.trim() ??
-              '';
+          data['emergencyId']?.toString().trim() ??
+          data['alertId']?.toString().trim() ??
+          data['notificationId']?.toString().trim() ??
+          data['documentId']?.toString().trim() ??
+          message.messageId?.trim() ??
+          '';
 
       final consultantId =
-          data['consultantId']
-                  ?.toString()
-                  .trim() ??
-              data['patientId']
-                  ?.toString()
-                  .trim() ??
-              data['userId']
-                  ?.toString()
-                  .trim() ??
-              '';
+          data['consultantId']?.toString().trim() ??
+          data['patientId']?.toString().trim() ??
+          data['userId']?.toString().trim() ??
+          '';
 
       final emergencyKey =
           emergencyId.isNotEmpty
               ? emergencyId
               : '$consultantId|$title|$body';
 
-      /*
-       * Una emergencia recibida por FCM no se vuelve a guardar
-       * en Firestore. Esto rompe el ciclo:
-       *
-       * Firestore → FCM → Firestore → FCM.
-       */
       await showEmergencyAlert(
-        title:
-            title,
-        body:
-            body,
-        emergencyKey:
-            emergencyKey,
-        saveInFirestore:
-            false,
+        title: title,
+        body: body,
+        emergencyKey: emergencyKey,
+        saveInFirestore: saveEmergencyInFirestore,
       );
 
       return;
     }
 
     await showInstant(
-      title:
-          title,
-      body:
-          body,
-      payload:
-          data['payload']?.toString(),
+      title: title,
+      body: body,
+      payload: data['payload']?.toString(),
     );
   }
-    // ============================================================
+
+  // ============================================================
   // PROGRAMAR RECORDATORIO NORMAL
   // ============================================================
 
@@ -725,9 +696,7 @@ class NotificationsService {
       return;
     }
 
-    if (!dateTime.isAfter(
-      DateTime.now(),
-    )) {
+    if (!dateTime.isAfter(DateTime.now())) {
       debugPrint(
         'No se programó el recordatorio porque la fecha ya pasó.',
       );
@@ -737,62 +706,42 @@ class NotificationsService {
 
     await _trimPending();
 
-    const androidDetails =
-        AndroidNotificationDetails(
+    const androidDetails = AndroidNotificationDetails(
       _androidChannelId,
       _androidChannelName,
-      channelDescription:
-          _androidChannelDescription,
-      importance:
-          Importance.max,
-      priority:
-          Priority.high,
-      icon:
-          '@mipmap/ic_launcher',
-      playSound:
-          true,
-      enableVibration:
-          true,
-      ticker:
-          'Recordatorio',
-      category:
-          AndroidNotificationCategory.alarm,
-      fullScreenIntent:
-          true,
+      channelDescription: _androidChannelDescription,
+      importance: Importance.max,
+      priority: Priority.max,
+      icon: '@mipmap/ic_launcher',
+      playSound: true,
+      enableVibration: true,
+      ticker: 'Recordatorio',
+      category: AndroidNotificationCategory.alarm,
+      fullScreenIntent: false,
     );
 
-    const iosDetails =
-        DarwinNotificationDetails(
-      presentAlert:
-          true,
-      presentBadge:
-          true,
-      presentSound:
-          true,
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
     );
 
-    const notificationDetails =
-        NotificationDetails(
-      android:
-          androidDetails,
-      iOS:
-          iosDetails,
+    const notificationDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
     );
 
-    final notificationId =
-        _baseIdStable(
+    final notificationId = _baseIdStable(
       'reminder/$reminderId',
     );
 
-    final scheduledDate =
-        tz.TZDateTime.from(
+    final scheduledDate = tz.TZDateTime.from(
       dateTime,
       tz.local,
     );
 
     final notificationBody =
-        body == null ||
-                body.trim().isEmpty
+        body == null || body.trim().isEmpty
             ? title
             : '$title\n$body';
 
@@ -803,20 +752,13 @@ class NotificationsService {
         notificationBody,
         scheduledDate,
         notificationDetails,
-        androidScheduleMode:
-            AndroidScheduleMode
-                .exactAllowWhileIdle,
-        payload:
-            'reminder/$reminderId',
-        matchDateTimeComponents:
-            null,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        payload: 'reminder/$reminderId',
+        matchDateTimeComponents: null,
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       debugPrint(
-        'Android no permitió una alarma exacta. '
-        'Se usará una alarma aproximada: $error',
+        'Android no permitió una alarma exacta. Se usará una aproximada: $error',
       );
 
       await _plugin.zonedSchedule(
@@ -825,33 +767,24 @@ class NotificationsService {
         notificationBody,
         scheduledDate,
         notificationDetails,
-        androidScheduleMode:
-            AndroidScheduleMode
-                .inexactAllowWhileIdle,
-        payload:
-            'reminder/$reminderId',
-        matchDateTimeComponents:
-            null,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: 'reminder/$reminderId',
+        matchDateTimeComponents: null,
       );
     }
 
     await _saveReminderInAppNotifications(
-      reminderId:
-          reminderId,
-      title:
-          title,
-      body:
-          body,
-      dateTime:
-          dateTime,
+      reminderId: reminderId,
+      title: title,
+      body: body,
+      dateTime: dateTime,
     );
 
     debugPrint(
       'Recordatorio programado correctamente: $title',
     );
   }
-
-  // ============================================================
+    // ============================================================
   // CANCELAR RECORDATORIO NORMAL
   // ============================================================
 
@@ -864,8 +797,7 @@ class NotificationsService {
       return;
     }
 
-    final notificationId =
-        _baseIdStable(
+    final notificationId = _baseIdStable(
       'reminder/$reminderId',
     );
 
@@ -884,8 +816,7 @@ class NotificationsService {
     String? body,
     required DateTime dateTime,
   }) async {
-    final user =
-        FirebaseAuth.instance.currentUser;
+    final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       return;
@@ -893,59 +824,32 @@ class NotificationsService {
 
     try {
       await FirebaseFirestore.instance
-          .collection(
-            'users',
-          )
-          .doc(
-            user.uid,
-          )
-          .collection(
-            'notifications',
-          )
-          .doc(
-            'reminder_$reminderId',
-          )
+          .collection('users')
+          .doc(user.uid)
+          .collection('notifications')
+          .doc('reminder_$reminderId')
           .set(
         {
-          'title':
-              'Recordatorio',
-          'body':
-              body == null ||
-                      body.trim().isEmpty
-                  ? title
-                  : '$title\n$body',
-          'type':
-              'reminder',
-          'reminderId':
-              reminderId,
-          'payload':
-              'reminder/$reminderId',
-          'timestamp':
-              Timestamp.fromDate(
-            dateTime,
-          ),
-          'read':
-              false,
-          'deleted':
-              false,
-          'completed':
-              false,
-          'active':
-              true,
-          'createdAt':
-              FieldValue.serverTimestamp(),
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'title': 'Recordatorio',
+          'body': body == null || body.trim().isEmpty
+              ? title
+              : '$title\n$body',
+          'type': 'reminder',
+          'reminderId': reminderId,
+          'payload': 'reminder/$reminderId',
+          'timestamp': Timestamp.fromDate(dateTime),
+          'read': false,
+          'deleted': false,
+          'completed': false,
+          'active': true,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(
-          merge:
-              true,
+          merge: true,
         ),
       );
-    } catch (
-      error,
-      stackTrace
-    ) {
+    } catch (error, stackTrace) {
       debugPrint(
         'Error guardando el recordatorio interno: $error',
       );
@@ -962,51 +866,30 @@ class NotificationsService {
 
   static Future<int> getUnreadAppNotificationCount() async {
     try {
-      final uid =
-          FirebaseAuth.instance.currentUser?.uid;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
 
       if (uid == null) {
         return 0;
       }
 
-      final snapshot =
-          await FirebaseFirestore.instance
-              .collection(
-                'users',
-              )
-              .doc(
-                uid,
-              )
-              .collection(
-                'notifications',
-              )
-              .get();
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('notifications')
+          .get();
 
       return snapshot.docs.where(
-        (
-          document,
-        ) {
-          final data =
-              document.data();
+        (document) {
+          final data = document.data();
 
-          final isRead =
-              data['read'] == true;
+          final isRead = data['read'] == true;
+          final isDeleted = data['deleted'] == true;
+          final isCompleted = data['completed'] == true;
 
-          final isDeleted =
-              data['deleted'] == true;
-
-          final isCompleted =
-              data['completed'] == true;
-
-          return !isRead &&
-              !isDeleted &&
-              !isCompleted;
+          return !isRead && !isDeleted && !isCompleted;
         },
       ).length;
-    } catch (
-      error,
-      stackTrace
-    ) {
+    } catch (error, stackTrace) {
       debugPrint(
         'Error contando notificaciones no leídas: $error',
       );
@@ -1024,49 +907,28 @@ class NotificationsService {
   // ============================================================
 
   static Stream<int> watchUnreadAppNotificationCount() {
-    final uid =
-        FirebaseAuth.instance.currentUser?.uid;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
 
     if (uid == null) {
-      return Stream<int>.value(
-        0,
-      );
+      return Stream<int>.value(0);
     }
 
     return FirebaseFirestore.instance
-        .collection(
-          'users',
-        )
-        .doc(
-          uid,
-        )
-        .collection(
-          'notifications',
-        )
+        .collection('users')
+        .doc(uid)
+        .collection('notifications')
         .snapshots()
         .map(
-      (
-        snapshot,
-      ) {
+      (snapshot) {
         return snapshot.docs.where(
-          (
-            document,
-          ) {
-            final data =
-                document.data();
+          (document) {
+            final data = document.data();
 
-            final isRead =
-                data['read'] == true;
+            final isRead = data['read'] == true;
+            final isDeleted = data['deleted'] == true;
+            final isCompleted = data['completed'] == true;
 
-            final isDeleted =
-                data['deleted'] == true;
-
-            final isCompleted =
-                data['completed'] == true;
-
-            return !isRead &&
-                !isDeleted &&
-                !isCompleted;
+            return !isRead && !isDeleted && !isCompleted;
           },
         ).length;
       },
@@ -1080,8 +942,7 @@ class NotificationsService {
   static Future<void> markAppNotificationAsRead(
     String notificationId,
   ) async {
-    final uid =
-        FirebaseAuth.instance.currentUser?.uid;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
 
     if (uid == null) {
       throw Exception(
@@ -1091,40 +952,25 @@ class NotificationsService {
 
     try {
       await FirebaseFirestore.instance
-          .collection(
-            'users',
-          )
-          .doc(
-            uid,
-          )
-          .collection(
-            'notifications',
-          )
-          .doc(
-            notificationId,
-          )
+          .collection('users')
+          .doc(uid)
+          .collection('notifications')
+          .doc(notificationId)
           .set(
         {
-          'read':
-              true,
-          'readAt':
-              FieldValue.serverTimestamp(),
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'read': true,
+          'readAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(
-          merge:
-              true,
+          merge: true,
         ),
       );
 
       debugPrint(
         'Notificación marcada como leída: $notificationId',
       );
-    } catch (
-      error,
-      stackTrace
-    ) {
+    } catch (error, stackTrace) {
       debugPrint(
         'Error marcando notificación como leída: $error',
       );
@@ -1144,100 +990,64 @@ class NotificationsService {
   static Future<void> markMemoryNotificationAsRead(
     String memoryId,
   ) async {
-    final currentUid =
-        FirebaseAuth.instance.currentUser?.uid;
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
 
     if (currentUid == null) {
       return;
     }
 
-    final parts =
-        memoryId.split('/');
+    final parts = memoryId.split('/');
 
     if (parts.length != 2) {
       return;
     }
 
-    final memoryOwnerId =
-        parts[0].trim();
+    final memoryOwnerId = parts[0].trim();
+    final memoryDocumentId = parts[1].trim();
 
-    final memoryDocumentId =
-        parts[1].trim();
-
-    if (memoryOwnerId.isEmpty ||
-        memoryDocumentId.isEmpty) {
+    if (memoryOwnerId.isEmpty || memoryDocumentId.isEmpty) {
       return;
     }
 
-    final firestore =
-        FirebaseFirestore.instance;
+    final firestore = FirebaseFirestore.instance;
 
     try {
       await firestore
-          .collection(
-            'memories',
-          )
-          .doc(
-            memoryOwnerId,
-          )
-          .collection(
-            'user_memories',
-          )
-          .doc(
-            memoryDocumentId,
-          )
-          .set(
+          .collection('memories')
+          .doc(memoryOwnerId)
+          .collection('user_memories')
+          .doc(memoryDocumentId)
+          .update(
         {
-          'reminder.read':
-              true,
-          'reminder.readAt':
-              FieldValue.serverTimestamp(),
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'reminder.read': true,
+          'reminder.readAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         },
-        SetOptions(
-          merge:
-              true,
-        ),
       );
 
-      final notificationsSnapshot =
-          await firestore
-              .collection(
-                'users',
-              )
-              .doc(
-                currentUid,
-              )
-              .collection(
-                'notifications',
-              )
-              .where(
-                'memoryId',
-                isEqualTo:
-                    memoryId,
-              )
-              .get();
+      final notificationsSnapshot = await firestore
+          .collection('users')
+          .doc(currentUid)
+          .collection('notifications')
+          .where(
+            'memoryId',
+            isEqualTo: memoryId,
+          )
+          .get();
 
       if (notificationsSnapshot.docs.isNotEmpty) {
-        final batch =
-            firestore.batch();
+        final batch = firestore.batch();
 
-        for (final document
-            in notificationsSnapshot.docs) {
+        for (final document in notificationsSnapshot.docs) {
           batch.set(
             document.reference,
             {
-              'read':
-                  true,
-              'readAt':
-                  FieldValue.serverTimestamp(),
-              'updatedAt':
-                  FieldValue.serverTimestamp(),
+              'read': true,
+              'readAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
             },
             SetOptions(
-              merge:
-                  true,
+              merge: true,
             ),
           );
         }
@@ -1248,10 +1058,7 @@ class NotificationsService {
       debugPrint(
         'Recuerdo marcado como visto: $memoryId',
       );
-    } catch (
-      error,
-      stackTrace
-    ) {
+    } catch (error, stackTrace) {
       debugPrint(
         'Error marcando recuerdo como visto: $error',
       );
@@ -1263,155 +1070,81 @@ class NotificationsService {
       rethrow;
     }
   }
-
-  // ============================================================
+    // ============================================================
   // COMPLETAR NOTIFICACIÓN
   // ============================================================
 
   static Future<void> completeAppNotification(
     String notificationId,
   ) async {
-    final uid =
-        FirebaseAuth.instance.currentUser?.uid;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
 
     if (uid == null) {
-      throw Exception(
-        'No hay un usuario autenticado.',
-      );
+      throw Exception('No hay un usuario autenticado.');
     }
 
-    final firestore =
-        FirebaseFirestore.instance;
+    final firestore = FirebaseFirestore.instance;
 
-    final notificationReference =
-        firestore
-            .collection(
-              'users',
-            )
-            .doc(
-              uid,
-            )
-            .collection(
-              'notifications',
-            )
-            .doc(
-              notificationId,
-            );
+    final notificationReference = firestore
+        .collection('users')
+        .doc(uid)
+        .collection('notifications')
+        .doc(notificationId);
 
     try {
-      final snapshot =
-          await notificationReference.get();
+      final snapshot = await notificationReference.get();
+      final data = snapshot.data() ?? <String, dynamic>{};
 
-      final data =
-          snapshot.data() ??
-              <String, dynamic>{};
+      final type = data['type']?.toString().toLowerCase().trim() ?? '';
+      final reminderId = data['reminderId']?.toString().trim();
+      final payload = data['payload']?.toString().trim();
+      final memoryId = data['memoryId']?.toString().trim();
+      final emergencyKey = data['emergencyKey']?.toString().trim();
 
-      final type =
-          data['type']
-                  ?.toString()
-                  .toLowerCase()
-                  .trim() ??
-              '';
-
-      final reminderId =
-          data['reminderId']
-              ?.toString()
-              .trim();
-
-      final payload =
-          data['payload']
-              ?.toString()
-              .trim();
-
-      final memoryId =
-          data['memoryId']
-              ?.toString()
-              .trim();
-
-      final emergencyKey =
-          data['emergencyKey']
-              ?.toString()
-              .trim();
-
-      /*
-       * Las emergencias se cierran con su método específico
-       * para evitar que vuelvan a aparecer.
-       */
-      if (type == 'emergency' ||
-          type == 'emergencia') {
+      if (type == 'emergency' || type == 'emergencia') {
         final resolvedEmergencyKey =
-            emergencyKey != null &&
-                    emergencyKey.isNotEmpty
+            emergencyKey != null && emergencyKey.isNotEmpty
                 ? emergencyKey
-                : _extractEmergencyKeyFromPayload(
-                    payload,
-                  );
+                : _extractEmergencyKeyFromPayload(payload);
 
         if (resolvedEmergencyKey != null &&
             resolvedEmergencyKey.isNotEmpty) {
           await closeEmergencyAlert(
-            emergencyKey:
-                resolvedEmergencyKey,
-            notificationDocumentId:
-                notificationId,
+            emergencyKey: resolvedEmergencyKey,
+            notificationDocumentId: notificationId,
           );
-
           return;
         }
       }
 
-      final batch =
-          firestore.batch();
+      final batch = firestore.batch();
 
       batch.set(
         notificationReference,
         {
-          'read':
-              true,
-          'completed':
-              true,
-          'active':
-              false,
-          'completedAt':
-              FieldValue.serverTimestamp(),
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'read': true,
+          'completed': true,
+          'active': false,
+          'completedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         },
-        SetOptions(
-          merge:
-              true,
-        ),
+        SetOptions(merge: true),
       );
 
-      if (reminderId != null &&
-          reminderId.isNotEmpty) {
+      if (reminderId != null && reminderId.isNotEmpty) {
         final reminderReference =
-            firestore
-                .collection(
-                  'reminders',
-                )
-                .doc(
-                  reminderId,
-                );
+            firestore.collection('reminders').doc(reminderId);
 
         batch.set(
           reminderReference,
           {
-            'completed':
-                true,
-            'notificationEnabled':
-                false,
-            'active':
-                false,
-            'completedAt':
-                FieldValue.serverTimestamp(),
-            'updatedAt':
-                FieldValue.serverTimestamp(),
+            'completed': true,
+            'notificationEnabled': false,
+            'active': false,
+            'completedAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
           },
-          SetOptions(
-            merge:
-                true,
-          ),
+          SetOptions(merge: true),
         );
       }
 
@@ -1419,98 +1152,53 @@ class NotificationsService {
 
       if (payload != null &&
           payload.contains('/') &&
-          !payload.startsWith(
-            'reminder/',
-          ) &&
-          !payload.startsWith(
-            'emergency/',
-          ) &&
-          !payload.startsWith(
-            'emergencia/',
-          )) {
-        resolvedMemoryPayload =
-            payload;
-      } else if (memoryId != null &&
-          memoryId.contains('/')) {
-        resolvedMemoryPayload =
-            memoryId;
+          !payload.startsWith('reminder/') &&
+          !payload.startsWith('emergency/') &&
+          !payload.startsWith('emergencia/')) {
+        resolvedMemoryPayload = payload;
+      } else if (memoryId != null && memoryId.contains('/')) {
+        resolvedMemoryPayload = memoryId;
       }
 
       if (resolvedMemoryPayload != null) {
-        final parts =
-            resolvedMemoryPayload.split('/');
+        final parts = resolvedMemoryPayload.split('/');
 
         if (parts.length == 2) {
-          final memoryUserId =
-              parts[0];
+          final memoryUserId = parts[0];
+          final memoryDocumentId = parts[1];
 
-          final memoryDocumentId =
-              parts[1];
-
-          final memoryReference =
-              firestore
-                  .collection(
-                    'memories',
-                  )
-                  .doc(
-                    memoryUserId,
-                  )
-                  .collection(
-                    'user_memories',
-                  )
-                  .doc(
-                    memoryDocumentId,
-                  );
+          final memoryReference = firestore
+              .collection('memories')
+              .doc(memoryUserId)
+              .collection('user_memories')
+              .doc(memoryDocumentId);
 
           batch.set(
             memoryReference,
             {
-              'reminder.enabled':
-                  false,
-              'reminder.completed':
-                  true,
-              'updatedAt':
-                  FieldValue.serverTimestamp(),
+              'reminder.enabled': false,
+              'reminder.completed': true,
+              'updatedAt': FieldValue.serverTimestamp(),
             },
-            SetOptions(
-              merge:
-                  true,
-            ),
+            SetOptions(merge: true),
           );
         }
       }
 
       await batch.commit();
 
-      if (reminderId != null &&
-          reminderId.isNotEmpty) {
-        await cancelReminderNotification(
-          reminderId,
-        );
+      if (reminderId != null && reminderId.isNotEmpty) {
+        await cancelReminderNotification(reminderId);
       }
 
       if (resolvedMemoryPayload != null) {
-        await cancelForMemory(
-          resolvedMemoryPayload,
-        );
+        await cancelForMemory(resolvedMemoryPayload);
       }
 
-      debugPrint(
-        'Notificación completada: $notificationId',
-      );
-    } catch (
-      error,
-      stackTrace
-    ) {
-      debugPrint(
-        'Error completando la notificación '
-        '$notificationId: $error',
-      );
-
-      debugPrint(
-        stackTrace.toString(),
-      );
-
+      debugPrint('Notificación completada: $notificationId');
+    } catch (error, stackTrace) {
+      debugPrint('Error completando la notificación $notificationId: $error');
+      debugPrint(stackTrace.toString());
       rethrow;
     }
   }
@@ -1522,160 +1210,81 @@ class NotificationsService {
   static Future<void> deleteAppNotification(
     String notificationId,
   ) async {
-    final uid =
-        FirebaseAuth.instance.currentUser?.uid;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
 
     if (uid == null) {
-      throw Exception(
-        'No hay un usuario autenticado.',
-      );
+      throw Exception('No hay un usuario autenticado.');
     }
 
-    final firestore =
-        FirebaseFirestore.instance;
+    final firestore = FirebaseFirestore.instance;
 
-    final notificationReference =
-        firestore
-            .collection(
-              'users',
-            )
-            .doc(
-              uid,
-            )
-            .collection(
-              'notifications',
-            )
-            .doc(
-              notificationId,
-            );
+    final notificationReference = firestore
+        .collection('users')
+        .doc(uid)
+        .collection('notifications')
+        .doc(notificationId);
 
     try {
-      final snapshot =
-          await notificationReference.get();
+      final snapshot = await notificationReference.get();
+      final data = snapshot.data() ?? <String, dynamic>{};
 
-      final data =
-          snapshot.data() ??
-              <String, dynamic>{};
+      final type = data['type']?.toString().toLowerCase().trim() ?? '';
+      final reminderId = data['reminderId']?.toString().trim();
+      final payload = data['payload']?.toString().trim();
+      final memoryId = data['memoryId']?.toString().trim();
+      final emergencyKey = data['emergencyKey']?.toString().trim();
 
-      final type =
-          data['type']
-                  ?.toString()
-                  .toLowerCase()
-                  .trim() ??
-              '';
-
-      final reminderId =
-          data['reminderId']
-              ?.toString()
-              .trim();
-
-      final payload =
-          data['payload']
-              ?.toString()
-              .trim();
-
-      final memoryId =
-          data['memoryId']
-              ?.toString()
-              .trim();
-
-      final emergencyKey =
-          data['emergencyKey']
-              ?.toString()
-              .trim();
-
-      if (type == 'emergency' ||
-          type == 'emergencia') {
+      if (type == 'emergency' || type == 'emergencia') {
         final resolvedEmergencyKey =
-            emergencyKey != null &&
-                    emergencyKey.isNotEmpty
+            emergencyKey != null && emergencyKey.isNotEmpty
                 ? emergencyKey
-                : _extractEmergencyKeyFromPayload(
-                    payload,
-                  );
+                : _extractEmergencyKeyFromPayload(payload);
 
         if (resolvedEmergencyKey != null &&
             resolvedEmergencyKey.isNotEmpty) {
           await closeEmergencyAlert(
-            emergencyKey:
-                resolvedEmergencyKey,
-            notificationDocumentId:
-                notificationId,
+            emergencyKey: resolvedEmergencyKey,
+            notificationDocumentId: notificationId,
           );
-
           return;
         }
       }
 
       await notificationReference.set(
         {
-          'read':
-              true,
-          'deleted':
-              true,
-          'active':
-              false,
-          'deletedAt':
-              FieldValue.serverTimestamp(),
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'read': true,
+          'deleted': true,
+          'active': false,
+          'deletedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         },
-        SetOptions(
-          merge:
-              true,
-        ),
+        SetOptions(merge: true),
       );
 
-      if (reminderId != null &&
-          reminderId.isNotEmpty) {
-        await cancelReminderNotification(
-          reminderId,
-        );
+      if (reminderId != null && reminderId.isNotEmpty) {
+        await cancelReminderNotification(reminderId);
       }
 
       String? resolvedMemoryPayload;
 
       if (payload != null &&
           payload.contains('/') &&
-          !payload.startsWith(
-            'reminder/',
-          ) &&
-          !payload.startsWith(
-            'emergency/',
-          ) &&
-          !payload.startsWith(
-            'emergencia/',
-          )) {
-        resolvedMemoryPayload =
-            payload;
-      } else if (memoryId != null &&
-          memoryId.contains('/')) {
-        resolvedMemoryPayload =
-            memoryId;
+          !payload.startsWith('reminder/') &&
+          !payload.startsWith('emergency/') &&
+          !payload.startsWith('emergencia/')) {
+        resolvedMemoryPayload = payload;
+      } else if (memoryId != null && memoryId.contains('/')) {
+        resolvedMemoryPayload = memoryId;
       }
 
       if (resolvedMemoryPayload != null) {
-        await cancelForMemory(
-          resolvedMemoryPayload,
-        );
+        await cancelForMemory(resolvedMemoryPayload);
       }
 
-      debugPrint(
-        'Notificación eliminada: $notificationId',
-      );
-    } catch (
-      error,
-      stackTrace
-    ) {
-      debugPrint(
-        'Error eliminando notificación '
-        '$notificationId: $error',
-      );
-
-      debugPrint(
-        stackTrace.toString(),
-      );
-
+      debugPrint('Notificación eliminada: $notificationId');
+    } catch (error, stackTrace) {
+      debugPrint('Error eliminando notificación $notificationId: $error');
+      debugPrint(stackTrace.toString());
       rethrow;
     }
   }
@@ -1687,47 +1296,28 @@ class NotificationsService {
   static String? _extractEmergencyKeyFromPayload(
     String? payload,
   ) {
-    final value =
-        payload?.trim() ??
-            '';
+    final value = payload?.trim() ?? '';
 
     if (value.isEmpty) {
       return null;
     }
 
-    final lowerValue =
-        value.toLowerCase();
+    final lowerValue = value.toLowerCase();
 
-    if (lowerValue.startsWith(
-      'emergency/',
-    )) {
-      final key =
-          value.substring(
-        'emergency/'.length,
-      );
-
-      return key.isEmpty
-          ? null
-          : key;
+    if (lowerValue.startsWith('emergency/')) {
+      final key = value.substring('emergency/'.length);
+      return key.isEmpty ? null : key;
     }
 
-    if (lowerValue.startsWith(
-      'emergencia/',
-    )) {
-      final key =
-          value.substring(
-        'emergencia/'.length,
-      );
-
-      return key.isEmpty
-          ? null
-          : key;
+    if (lowerValue.startsWith('emergencia/')) {
+      final key = value.substring('emergencia/'.length);
+      return key.isEmpty ? null : key;
     }
 
     return null;
   }
     // ============================================================
-  // PROGRAMAR RECORDATORIO DE RECUERDO
+  // PROGRAMAR RECORDATORIO DE RECUERDO / CALENDARIO
   // ============================================================
 
   static Future<void> scheduleForMemory({
@@ -1742,79 +1332,47 @@ class NotificationsService {
       return;
     }
 
-    await cancelForMemory(
-      memoryId,
-    );
-
+    await cancelForMemory(memoryId);
     await _trimPending();
 
-    final now =
-        DateTime.now();
+    final now = DateTime.now();
+    DateTime adjustedDate = anchorDate;
 
-    DateTime adjustedDate =
-        anchorDate;
-
-    while (!adjustedDate.isAfter(
-      now,
-    )) {
-      adjustedDate =
-          _addCadence(
-        adjustedDate,
-        cadence,
-      );
+    while (!adjustedDate.isAfter(now)) {
+      adjustedDate = _addCadence(adjustedDate, cadence);
     }
 
-    const androidDetails =
-        AndroidNotificationDetails(
+    const androidDetails = AndroidNotificationDetails(
       _androidChannelId,
       _androidChannelName,
-      channelDescription:
-          _androidChannelDescription,
-      importance:
-          Importance.max,
-      priority:
-          Priority.high,
-      icon:
-          '@mipmap/ic_launcher',
-      playSound:
-          true,
-      enableVibration:
-          true,
-      category:
-          AndroidNotificationCategory.reminder,
+      channelDescription: _androidChannelDescription,
+      importance: Importance.max,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+      playSound: true,
+      enableVibration: true,
+      category: AndroidNotificationCategory.reminder,
     );
 
-    const iosDetails =
-        DarwinNotificationDetails(
-      presentAlert:
-          true,
-      presentBadge:
-          true,
-      presentSound:
-          true,
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
     );
 
-    const notificationDetails =
-        NotificationDetails(
-      android:
-          androidDetails,
-      iOS:
-          iosDetails,
+    const notificationDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
     );
 
-    final notificationId =
-        _baseIdStable(
-      memoryId,
-    );
+    final notificationId = _baseIdStable(memoryId);
 
-    final scheduledDate =
-        tz.TZDateTime.from(
+    final scheduledDate = tz.TZDateTime.from(
       adjustedDate,
       tz.local,
     );
 
-    final matchComponents =
-        _matchDateTimeComponentsForCadence(
+    final matchComponents = _matchDateTimeComponentsForCadence(
       cadence,
     );
 
@@ -1825,17 +1383,11 @@ class NotificationsService {
         title,
         scheduledDate,
         notificationDetails,
-        androidScheduleMode:
-            AndroidScheduleMode
-                .exactAllowWhileIdle,
-        payload:
-            memoryId,
-        matchDateTimeComponents:
-            matchComponents,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        payload: memoryId,
+        matchDateTimeComponents: matchComponents,
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       debugPrint(
         'No se pudo usar alarma exacta para el recuerdo. '
         'Se usará una alarma aproximada: $error',
@@ -1847,30 +1399,21 @@ class NotificationsService {
         title,
         scheduledDate,
         notificationDetails,
-        androidScheduleMode:
-            AndroidScheduleMode
-                .inexactAllowWhileIdle,
-        payload:
-            memoryId,
-        matchDateTimeComponents:
-            matchComponents,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: memoryId,
+        matchDateTimeComponents: matchComponents,
       );
     }
 
     await _saveMemoryInAppNotifications(
-      memoryId:
-          memoryId,
-      title:
-          title,
-      dateTime:
-          adjustedDate,
-      cadence:
-          cadence,
+      memoryId: memoryId,
+      title: title,
+      dateTime: adjustedDate,
+      cadence: cadence,
     );
 
     debugPrint(
-      'Recordatorio de recuerdo programado: '
-      '$memoryId para $adjustedDate',
+      'Recordatorio de recuerdo programado: $memoryId para $adjustedDate',
     );
   }
 
@@ -1878,8 +1421,7 @@ class NotificationsService {
   // COMPONENTES DE REPETICIÓN
   // ============================================================
 
-  static DateTimeComponents?
-      _matchDateTimeComponentsForCadence(
+  static DateTimeComponents? _matchDateTimeComponentsForCadence(
     MemoryCadence cadence,
   ) {
     switch (cadence) {
@@ -1907,8 +1449,7 @@ class NotificationsService {
     required DateTime dateTime,
     required MemoryCadence cadence,
   }) async {
-    final uid =
-        FirebaseAuth.instance.currentUser?.uid;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
 
     if (uid == null) {
       return;
@@ -1919,65 +1460,31 @@ class NotificationsService {
           'memory_${_baseIdStable(memoryId)}';
 
       await FirebaseFirestore.instance
-          .collection(
-            'users',
-          )
-          .doc(
-            uid,
-          )
-          .collection(
-            'notifications',
-          )
-          .doc(
-            notificationDocumentId,
-          )
+          .collection('users')
+          .doc(uid)
+          .collection('notifications')
+          .doc(notificationDocumentId)
           .set(
         {
-          'title':
-              'Recordatorio de recuerdo',
-          'body':
-              title,
-          'type':
-              'memory',
-          'memoryId':
-              memoryId,
-          'payload':
-              memoryId,
-          'cadence':
-              cadence.name,
-          'timestamp':
-              Timestamp.fromDate(
-            dateTime,
-          ),
-          'read':
-              false,
-          'deleted':
-              false,
-          'completed':
-              false,
-          'active':
-              true,
-          'createdAt':
-              FieldValue.serverTimestamp(),
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'title': 'Recordatorio de recuerdo',
+          'body': title,
+          'type': 'memory',
+          'memoryId': memoryId,
+          'payload': memoryId,
+          'cadence': cadence.name,
+          'timestamp': Timestamp.fromDate(dateTime),
+          'read': false,
+          'deleted': false,
+          'completed': false,
+          'active': true,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         },
-        SetOptions(
-          merge:
-              true,
-        ),
+        SetOptions(merge: true),
       );
-    } catch (
-      error,
-      stackTrace
-    ) {
-      debugPrint(
-        'Error guardando notificación interna de recuerdo: $error',
-      );
-
-      debugPrint(
-        stackTrace.toString(),
-      );
+    } catch (error, stackTrace) {
+      debugPrint('Error guardando notificación interna de recuerdo: $error');
+      debugPrint(stackTrace.toString());
     }
   }
 
@@ -1989,223 +1496,125 @@ class NotificationsService {
     String memoryId,
   ) async {
     try {
-      final parts =
-          memoryId.split('/');
+      final parts = memoryId.split('/');
 
       if (parts.length != 2) {
         return;
       }
 
-      final uid =
-          parts[0].trim();
+      final uid = parts[0].trim();
+      final documentId = parts[1].trim();
 
-      final documentId =
-          parts[1].trim();
-
-      if (uid.isEmpty ||
-          documentId.isEmpty) {
+      if (uid.isEmpty || documentId.isEmpty) {
         return;
       }
 
-      final documentReference =
-          FirebaseFirestore.instance
-              .collection(
-                'memories',
-              )
-              .doc(
-                uid,
-              )
-              .collection(
-                'user_memories',
-              )
-              .doc(
-                documentId,
-              );
+      final documentReference = FirebaseFirestore.instance
+          .collection('memories')
+          .doc(uid)
+          .collection('user_memories')
+          .doc(documentId);
 
-      final document =
-          await documentReference.get();
+      final document = await documentReference.get();
 
       if (!document.exists) {
         return;
       }
 
-      final data =
-          document.data() ??
-              <String, dynamic>{};
-
-      final reminderValue =
-          data['reminder'];
+      final data = document.data() ?? <String, dynamic>{};
+      final reminderValue = data['reminder'];
 
       if (reminderValue is! Map) {
         return;
       }
 
-      final reminder =
-          Map<String, dynamic>.from(
-        reminderValue,
-      );
+      final reminder = Map<String, dynamic>.from(reminderValue);
 
-      final enabled =
-          reminder['enabled'] == true;
+      final enabled = reminder['enabled'] == true;
+      final deleted = reminder['deleted'] == true;
+      final completed = reminder['completed'] == true;
 
-      final deleted =
-          reminder['deleted'] == true;
-
-      final completed =
-          reminder['completed'] == true;
-
-      if (!enabled ||
-          deleted ||
-          completed) {
-        await cancelForMemory(
-          memoryId,
-        );
-
+      if (!enabled || deleted || completed) {
+        await cancelForMemory(memoryId);
         return;
       }
 
       final cadenceText =
-          reminder['cadence']
-                  ?.toString()
-                  .toLowerCase()
-                  .trim() ??
+          reminder['cadence']?.toString().toLowerCase().trim() ??
               'weekly';
 
-      final cadence =
-          cadenceFromString(
-        cadenceText,
-      );
+      final cadence = cadenceFromString(cadenceText);
 
       DateTime? parsedNextAt;
 
-      final nextAtValue =
-          reminder['nextAt'];
+      final nextAtValue = reminder['nextAt'];
 
       if (nextAtValue is Timestamp) {
-        parsedNextAt =
-            nextAtValue
-                .toDate()
-                .toLocal();
+        parsedNextAt = nextAtValue.toDate().toLocal();
       } else if (nextAtValue is DateTime) {
-        parsedNextAt =
-            nextAtValue.toLocal();
+        parsedNextAt = nextAtValue.toLocal();
       } else if (nextAtValue is String) {
-        parsedNextAt =
-            DateTime.tryParse(
-          nextAtValue,
-        )?.toLocal();
+        parsedNextAt = DateTime.tryParse(nextAtValue)?.toLocal();
       }
 
       DateTime? createdAt;
 
-      final createdAtValue =
-          data['createdAt'];
+      final createdAtValue = data['createdAt'];
 
       if (createdAtValue is Timestamp) {
-        createdAt =
-            createdAtValue
-                .toDate()
-                .toLocal();
+        createdAt = createdAtValue.toDate().toLocal();
       } else if (createdAtValue is DateTime) {
-        createdAt =
-            createdAtValue.toLocal();
+        createdAt = createdAtValue.toLocal();
       } else if (createdAtValue is String) {
-        createdAt =
-            DateTime.tryParse(
-          createdAtValue,
-        )?.toLocal();
+        createdAt = DateTime.tryParse(createdAtValue)?.toLocal();
       }
 
       DateTime nextAt =
-          parsedNextAt ??
-              (createdAt ??
-                      DateTime.now())
-                  .add(
-        const Duration(
-          days:
-              7,
-        ),
-      );
+          parsedNextAt ?? (createdAt ?? DateTime.now()).add(
+            const Duration(days: 7),
+          );
 
-      final now =
-          DateTime.now();
+      final now = DateTime.now();
 
-      while (!nextAt.isAfter(
-        now,
-      )) {
-        nextAt =
-            _addCadence(
-          nextAt,
-          cadence,
-        );
+      while (!nextAt.isAfter(now)) {
+        nextAt = _addCadence(nextAt, cadence);
       }
 
-      final text =
-          data['text']
-                  ?.toString()
-                  .trim() ??
-              '';
+      final text = data['text']?.toString().trim() ?? '';
 
-      final safeTitle =
-          text.isEmpty
-              ? 'Tienes un recuerdo guardado para volver a ver.'
-              : text;
+      final safeTitle = text.isEmpty
+          ? 'Tienes un recuerdo guardado para volver a ver.'
+          : text;
 
       await documentReference.set(
         {
-          'reminder.enabled':
-              true,
-          'reminder.cadence':
-              cadenceText,
-          'reminder.nextAt':
-              Timestamp.fromDate(
-            nextAt,
-          ),
-          'reminder.read':
-              false,
-          'reminder.deleted':
-              false,
-          'reminder.completed':
-              false,
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'reminder.enabled': true,
+          'reminder.cadence': cadenceText,
+          'reminder.nextAt': Timestamp.fromDate(nextAt),
+          'reminder.read': false,
+          'reminder.deleted': false,
+          'reminder.completed': false,
+          'updatedAt': FieldValue.serverTimestamp(),
         },
-        SetOptions(
-          merge:
-              true,
-        ),
+        SetOptions(merge: true),
       );
 
       await scheduleForMemory(
-        memoryId:
-            memoryId,
-        title:
-            safeTitle,
-        anchorDate:
-            nextAt,
-        cadence:
-            cadence,
+        memoryId: memoryId,
+        title: safeTitle,
+        anchorDate: nextAt,
+        cadence: cadence,
       );
 
       debugPrint(
-        'Recordatorio recuperado correctamente: '
-        '$memoryId para $nextAt',
+        'Recordatorio recuperado correctamente: $memoryId para $nextAt',
       );
-    } catch (
-      error,
-      stackTrace
-    ) {
-      debugPrint(
-        'Error recuperando recordatorio de recuerdo: $error',
-      );
-
-      debugPrint(
-        stackTrace.toString(),
-      );
+    } catch (error, stackTrace) {
+      debugPrint('Error recuperando recordatorio de recuerdo: $error');
+      debugPrint(stackTrace.toString());
     }
   }
-
-  // ============================================================
+    // ============================================================
   // CANCELAR RECORDATORIO DE RECUERDO
   // ============================================================
 
@@ -2218,22 +1627,15 @@ class NotificationsService {
       return;
     }
 
-    final notificationId =
-        _baseIdStable(
-      memoryId,
-    );
+    final notificationId = _baseIdStable(memoryId);
 
-    await _plugin.cancel(
-      notificationId,
-    );
+    await _plugin.cancel(notificationId);
   }
 
   static Future<void> cancelAllForMemory(
     String memoryId,
   ) async {
-    await cancelForMemory(
-      memoryId,
-    );
+    await cancelForMemory(memoryId);
   }
 
   // ============================================================
@@ -2249,9 +1651,7 @@ class NotificationsService {
       return;
     }
 
-    await _plugin.cancel(
-      id,
-    );
+    await _plugin.cancel(id);
   }
 
   // ============================================================
@@ -2281,19 +1681,10 @@ class NotificationsService {
     }
 
     try {
-      return await _plugin
-          .pendingNotificationRequests();
-    } catch (
-      error,
-      stackTrace
-    ) {
-      debugPrint(
-        'Error obteniendo notificaciones pendientes: $error',
-      );
-
-      debugPrint(
-        stackTrace.toString(),
-      );
+      return await _plugin.pendingNotificationRequests();
+    } catch (error, stackTrace) {
+      debugPrint('Error obteniendo notificaciones pendientes: $error');
+      debugPrint(stackTrace.toString());
 
       return <PendingNotificationRequest>[];
     }
@@ -2306,7 +1697,8 @@ class NotificationsService {
   static Future<int> getPendingCount() async {
     return getUnreadAppNotificationCount();
   }
-    // ============================================================
+
+  // ============================================================
   // MOSTRAR ALERTA DE EMERGENCIA
   // ============================================================
 
@@ -2327,123 +1719,77 @@ class NotificationsService {
             ? emergencyKey!.trim()
             : '$title|$body';
 
-    final now =
-        DateTime.now();
+    final now = DateTime.now();
 
-    _removeExpiredEmergencyKeys(
-      now,
-    );
+    _removeExpiredEmergencyKeys(now);
 
-    final lastProcessedAt =
-        _processedEmergencyTimes[normalizedKey];
+    final lastProcessedAt = _processedEmergencyTimes[normalizedKey];
 
     if (lastProcessedAt != null &&
-        now.difference(
-              lastProcessedAt,
-            ) <
-            _emergencyDuplicateWindow) {
-      debugPrint(
-        'Emergencia duplicada ignorada: $normalizedKey',
-      );
-
+        now.difference(lastProcessedAt) < _emergencyDuplicateWindow) {
+      debugPrint('Emergencia duplicada ignorada: $normalizedKey');
       return;
     }
 
-    if (_processedEmergencyKeys.contains(
-      normalizedKey,
-    )) {
-      debugPrint(
-        'Emergencia ya procesada ignorada: $normalizedKey',
-      );
-
+    if (_processedEmergencyKeys.contains(normalizedKey)) {
+      debugPrint('Emergencia ya procesada ignorada: $normalizedKey');
       return;
     }
 
-    _processedEmergencyKeys.add(
-      normalizedKey,
-    );
-
-    _processedEmergencyTimes[normalizedKey] =
-        now;
+    _processedEmergencyKeys.add(normalizedKey);
+    _processedEmergencyTimes[normalizedKey] = now;
 
     await _trimPending();
 
-    const androidDetails =
-        AndroidNotificationDetails(
+    final androidDetails = AndroidNotificationDetails(
       _emergencyChannelId,
       _emergencyChannelName,
-      channelDescription:
-          _emergencyChannelDescription,
-      importance:
-          Importance.max,
-      priority:
-          Priority.high,
-      icon:
-          '@mipmap/ic_launcher',
-      playSound:
-          true,
-      enableVibration:
-          true,
-      groupKey:
-          _emergencyGroupKey,
-      category:
-          AndroidNotificationCategory.alarm,
+      channelDescription: _emergencyChannelDescription,
+      importance: Importance.max,
+      priority: Priority.max,
+      icon: '@mipmap/ic_launcher',
+      playSound: true,
+      enableVibration: true,
+      vibrationPattern: _emergencyVibrationPattern,
+      groupKey: _emergencyGroupKey,
+      category: AndroidNotificationCategory.alarm,
+      visibility: NotificationVisibility.public,
+      ongoing: false,
+      autoCancel: true,
+      ticker: 'Emergencia detectada',
     );
 
-    const iosDetails =
-        DarwinNotificationDetails(
-      presentAlert:
-          true,
-      presentBadge:
-          true,
-      presentSound:
-          true,
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
     );
 
-    const notificationDetails =
-        NotificationDetails(
-      android:
-          androidDetails,
-      iOS:
-          iosDetails,
+    final notificationDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
     );
 
-    /*
-     * ID estable:
-     * la misma emergencia reemplaza a la anterior y no crea
-     * cientos de notificaciones diferentes.
-     */
-    final notificationId =
-        _baseIdStable(
+    final notificationId = _baseIdStable(
       'emergency/$normalizedKey',
     );
 
-    final payload =
-        'emergency/$normalizedKey';
+    final payload = 'emergency/$normalizedKey';
 
     await _plugin.show(
       notificationId,
       title,
       body,
       notificationDetails,
-      payload:
-          payload,
+      payload: payload,
     );
 
-    /*
-     * Una emergencia recibida mediante FCM no vuelve a
-     * guardarse en Firestore.
-     */
     if (saveInFirestore) {
       await _saveEmergencyInAppNotifications(
-        notificationId:
-            notificationId,
-        title:
-            title,
-        body:
-            body,
-        emergencyKey:
-            normalizedKey,
+        notificationId: notificationId,
+        title: title,
+        body: body,
+        emergencyKey: normalizedKey,
       );
     }
 
@@ -2457,39 +1803,24 @@ class NotificationsService {
   static void _removeExpiredEmergencyKeys(
     DateTime now,
   ) {
-    final expiredKeys =
-        _processedEmergencyTimes.entries
-            .where(
-              (
-                entry,
-              ) {
-                return now.difference(
-                      entry.value,
-                    ) >=
-                    _emergencyDuplicateWindow;
-              },
-            )
-            .map(
-              (
-                entry,
-              ) {
-                return entry.key;
-              },
-            )
-            .toList();
+    final expiredKeys = _processedEmergencyTimes.entries
+        .where(
+          (entry) {
+            return now.difference(entry.value) >=
+                _emergencyDuplicateWindow;
+          },
+        )
+        .map(
+          (entry) => entry.key,
+        )
+        .toList();
 
     for (final key in expiredKeys) {
-      _processedEmergencyTimes.remove(
-        key,
-      );
-
-      _processedEmergencyKeys.remove(
-        key,
-      );
+      _processedEmergencyTimes.remove(key);
+      _processedEmergencyKeys.remove(key);
     }
   }
-
-  // ============================================================
+    // ============================================================
   // ACTUALIZAR RESUMEN DE EMERGENCIAS
   // ============================================================
 
@@ -2503,92 +1834,51 @@ class NotificationsService {
             AndroidFlutterLocalNotificationsPlugin>();
 
     final activeNotifications =
-        await androidPlugin
-                ?.getActiveNotifications() ??
+        await androidPlugin?.getActiveNotifications() ??
             <ActiveNotification>[];
 
-    final emergencies =
-        activeNotifications.where(
-      (
-        notification,
-      ) {
-        final channelId =
-            notification.channelId ??
-                '';
-
-        final groupKey =
-            notification.groupKey ??
-                '';
+    final emergencies = activeNotifications.where(
+      (notification) {
+        final channelId = notification.channelId ?? '';
+        final groupKey = notification.groupKey ?? '';
 
         return notification.id != 0 &&
-            (
-              channelId ==
-                      _emergencyChannelId ||
-                  groupKey ==
-                      _emergencyGroupKey
-            );
+            (channelId == _emergencyChannelId ||
+                groupKey == _emergencyGroupKey);
       },
     ).toList();
 
     if (emergencies.length > 5) {
-      final excess =
-          emergencies.length - 5;
+      final excess = emergencies.length - 5;
 
-      for (
-        var index = 0;
-        index < excess;
-        index++
-      ) {
-        final id =
-            emergencies[index].id;
+      for (var index = 0; index < excess; index++) {
+        final id = emergencies[index].id;
 
         if (id != null) {
-          await _plugin.cancel(
-            id,
-          );
+          await _plugin.cancel(id);
         }
       }
     }
 
     final updatedNotifications =
-        await androidPlugin
-                ?.getActiveNotifications() ??
+        await androidPlugin?.getActiveNotifications() ??
             <ActiveNotification>[];
 
-    final updatedEmergencies =
-        updatedNotifications.where(
-      (
-        notification,
-      ) {
-        final channelId =
-            notification.channelId ??
-                '';
-
-        final groupKey =
-            notification.groupKey ??
-                '';
+    final updatedEmergencies = updatedNotifications.where(
+      (notification) {
+        final channelId = notification.channelId ?? '';
+        final groupKey = notification.groupKey ?? '';
 
         return notification.id != 0 &&
-            (
-              channelId ==
-                      _emergencyChannelId ||
-                  groupKey ==
-                      _emergencyGroupKey
-            );
+            (channelId == _emergencyChannelId ||
+                groupKey == _emergencyGroupKey);
       },
     ).toList();
 
-    final visibleCount =
-        min(
-      updatedEmergencies.length,
-      5,
-    );
+    final visibleCount = min(updatedEmergencies.length, 5);
 
     if (visibleCount <= 0) {
-      await _plugin.cancel(
-        0,
-      );
-
+      await _plugin.cancel(0);
       return;
     }
 
@@ -2599,30 +1889,20 @@ class NotificationsService {
           ? 'Tienes 1 emergencia reciente.'
           : 'Tienes $visibleCount emergencias recientes.',
       const NotificationDetails(
-        android:
-            AndroidNotificationDetails(
+        android: AndroidNotificationDetails(
           _emergencyChannelId,
           _emergencyChannelName,
-          channelDescription:
-              _emergencyChannelDescription,
-          importance:
-              Importance.high,
-          priority:
-              Priority.high,
-          icon:
-              '@mipmap/ic_launcher',
-          setAsGroupSummary:
-              true,
-          groupKey:
-              _emergencyGroupKey,
-          playSound:
-              false,
-          enableVibration:
-              false,
+          channelDescription: _emergencyChannelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          setAsGroupSummary: true,
+          groupKey: _emergencyGroupKey,
+          playSound: false,
+          enableVibration: false,
         ),
       ),
-      payload:
-          'emergency/summary',
+      payload: 'emergency/summary',
     );
   }
 
@@ -2636,77 +1916,42 @@ class NotificationsService {
     required String body,
     required String emergencyKey,
   }) async {
-    final uid =
-        FirebaseAuth.instance.currentUser?.uid;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
 
     if (uid == null) {
       return;
     }
 
     try {
-      final documentId =
-          'emergency_${_baseIdStable(emergencyKey)}';
+      final documentId = 'emergency_${_baseIdStable(emergencyKey)}';
 
       await FirebaseFirestore.instance
-          .collection(
-            'users',
-          )
-          .doc(
-            uid,
-          )
-          .collection(
-            'notifications',
-          )
-          .doc(
-            documentId,
-          )
+          .collection('users')
+          .doc(uid)
+          .collection('notifications')
+          .doc(documentId)
           .set(
         {
-          'title':
-              title,
-          'body':
-              body,
-          'type':
-              'emergency',
-          'emergencyKey':
-              emergencyKey,
-          'payload':
-              'emergency/$emergencyKey',
-          'androidNotificationId':
-              notificationId,
-          'timestamp':
-              FieldValue.serverTimestamp(),
-          'read':
-              false,
-          'deleted':
-              false,
-          'completed':
-              false,
-          'active':
-              true,
-          'resolved':
-              false,
-          'createdAt':
-              FieldValue.serverTimestamp(),
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'title': title,
+          'body': body,
+          'type': 'emergency',
+          'emergencyKey': emergencyKey,
+          'payload': 'emergency/$emergencyKey',
+          'androidNotificationId': notificationId,
+          'timestamp': FieldValue.serverTimestamp(),
+          'read': false,
+          'deleted': false,
+          'completed': false,
+          'active': true,
+          'resolved': false,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         },
-        SetOptions(
-          merge:
-              true,
-        ),
+        SetOptions(merge: true),
       );
-    } catch (
-      error,
-      stackTrace
-    ) {
-      debugPrint(
-        'Error guardando emergencia interna: $error',
-      );
-
-      debugPrint(
-        stackTrace.toString(),
-      );
+    } catch (error, stackTrace) {
+      debugPrint('Error guardando emergencia interna: $error');
+      debugPrint(stackTrace.toString());
     }
   }
 
@@ -2720,86 +1965,55 @@ class NotificationsService {
   }) async {
     await ensureInitialized();
 
-    final normalizedKey =
-        emergencyKey.trim();
+    final normalizedKey = emergencyKey.trim();
 
     if (normalizedKey.isEmpty) {
       return;
     }
 
-    final notificationId =
-        _baseIdStable(
+    final notificationId = _baseIdStable(
       'emergency/$normalizedKey',
     );
 
     if (!kIsWeb) {
-      await _plugin.cancel(
-        notificationId,
-      );
+      await _plugin.cancel(notificationId);
     }
 
-    final uid =
-        FirebaseAuth.instance.currentUser?.uid;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
 
     if (uid != null) {
       final documentId =
-          notificationDocumentId?.trim().isNotEmpty ==
-                  true
+          notificationDocumentId?.trim().isNotEmpty == true
               ? notificationDocumentId!.trim()
               : 'emergency_${_baseIdStable(normalizedKey)}';
 
       await FirebaseFirestore.instance
-          .collection(
-            'users',
-          )
-          .doc(
-            uid,
-          )
-          .collection(
-            'notifications',
-          )
-          .doc(
-            documentId,
-          )
+          .collection('users')
+          .doc(uid)
+          .collection('notifications')
+          .doc(documentId)
           .set(
         {
-          'read':
-              true,
-          'deleted':
-              true,
-          'completed':
-              true,
-          'active':
-              false,
-          'resolved':
-              true,
-          'resolvedAt':
-              FieldValue.serverTimestamp(),
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'read': true,
+          'deleted': true,
+          'completed': true,
+          'active': false,
+          'resolved': true,
+          'resolvedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         },
-        SetOptions(
-          merge:
-              true,
-        ),
+        SetOptions(merge: true),
       );
     }
 
-    _processedEmergencyKeys.add(
-      normalizedKey,
-    );
-
-    _processedEmergencyTimes[normalizedKey] =
-        DateTime.now();
+    _processedEmergencyKeys.add(normalizedKey);
+    _processedEmergencyTimes[normalizedKey] = DateTime.now();
 
     await _updateEmergencySummary();
 
-    debugPrint(
-      'Emergencia cerrada: $normalizedKey',
-    );
+    debugPrint('Emergencia cerrada: $normalizedKey');
   }
-
-  // ============================================================
+    // ============================================================
   // RETIRAR EMERGENCIAS VISIBLES DEL DISPOSITIVO
   // ============================================================
 
@@ -2816,84 +2030,48 @@ class NotificationsService {
               AndroidFlutterLocalNotificationsPlugin>();
 
       final activeNotifications =
-          await androidPlugin
-                  ?.getActiveNotifications() ??
+          await androidPlugin?.getActiveNotifications() ??
               <ActiveNotification>[];
 
-      for (final notification
-          in activeNotifications) {
-        final channelId =
-            notification.channelId ??
-                '';
-
-        final groupKey =
-            notification.groupKey ??
-                '';
-
-        final notificationId =
-            notification.id;
+      for (final notification in activeNotifications) {
+        final channelId = notification.channelId ?? '';
+        final groupKey = notification.groupKey ?? '';
+        final notificationId = notification.id;
 
         final isEmergency =
-            channelId ==
-                    _emergencyChannelId ||
-                groupKey ==
-                    _emergencyGroupKey ||
-                notificationId == 0;
+            channelId == _emergencyChannelId ||
+            groupKey == _emergencyGroupKey ||
+            notificationId == 0;
 
-        if (isEmergency &&
-            notificationId != null) {
-          await _plugin.cancel(
-            notificationId,
-          );
+        if (isEmergency && notificationId != null) {
+          await _plugin.cancel(notificationId);
         }
       }
 
-      await _plugin.cancel(
-        0,
-      );
+      await _plugin.cancel(0);
 
       final pendingNotifications =
           await _plugin.pendingNotificationRequests();
 
-      for (final notification
-          in pendingNotifications) {
+      for (final notification in pendingNotifications) {
         final payload =
-            notification.payload
-                    ?.toLowerCase()
-                    .trim() ??
-                '';
+            notification.payload?.toLowerCase().trim() ?? '';
 
         final isEmergency =
             payload == 'emergency' ||
-                payload == 'emergencia' ||
-                payload.startsWith(
-                  'emergency/',
-                ) ||
-                payload.startsWith(
-                  'emergencia/',
-                );
+            payload == 'emergencia' ||
+            payload.startsWith('emergency/') ||
+            payload.startsWith('emergencia/');
 
         if (isEmergency) {
-          await _plugin.cancel(
-            notification.id,
-          );
+          await _plugin.cancel(notification.id);
         }
       }
 
-      debugPrint(
-        'Alertas visibles de emergencia retiradas.',
-      );
-    } catch (
-      error,
-      stackTrace
-    ) {
-      debugPrint(
-        'Error retirando alertas visibles de emergencia: $error',
-      );
-
-      debugPrint(
-        stackTrace.toString(),
-      );
+      debugPrint('Alertas visibles de emergencia retiradas.');
+    } catch (error, stackTrace) {
+      debugPrint('Error retirando alertas visibles de emergencia: $error');
+      debugPrint(stackTrace.toString());
     }
   }
 
@@ -2909,86 +2087,46 @@ class NotificationsService {
         await clearVisibleEmergencyAlerts();
       }
 
-      final uid =
-          FirebaseAuth.instance.currentUser?.uid;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
 
       if (uid == null) {
         return;
       }
 
-      final collection =
-          FirebaseFirestore.instance
-              .collection(
-                'users',
-              )
-              .doc(
-                uid,
-              )
-              .collection(
-                'notifications',
-              );
+      final collection = FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('notifications');
 
-      final snapshot =
-          await collection.get();
+      final snapshot = await collection.get();
+      final batch = FirebaseFirestore.instance.batch();
 
-      final batch =
-          FirebaseFirestore.instance.batch();
-
-      var modifiedCount =
-          0;
+      var modifiedCount = 0;
 
       for (final document in snapshot.docs) {
-        final data =
-            document.data();
+        final data = document.data();
 
         final type =
-            data['type']
-                    ?.toString()
-                    .toLowerCase()
-                    .trim() ??
-                '';
-
+            data['type']?.toString().toLowerCase().trim() ?? '';
         final payload =
-            data['payload']
-                    ?.toString()
-                    .toLowerCase()
-                    .trim() ??
-                '';
-
+            data['payload']?.toString().toLowerCase().trim() ?? '';
         final title =
-            data['title']
-                    ?.toString()
-                    .toLowerCase()
-                    .trim() ??
-                '';
-
+            data['title']?.toString().toLowerCase().trim() ?? '';
         final body =
-            data['body']
-                    ?.toString()
-                    .toLowerCase()
-                    .trim() ??
-                '';
+            data['body']?.toString().toLowerCase().trim() ?? '';
 
         final isEmergency =
             type == 'emergency' ||
-                type == 'emergencia' ||
-                type == 'emergency_alert' ||
-                type == 'panic' ||
-                type == 'panic_alert' ||
-                payload == 'emergency' ||
-                payload == 'emergencia' ||
-                payload.startsWith(
-                  'emergency/',
-                ) ||
-                payload.startsWith(
-                  'emergencia/',
-                ) ||
-                title.contains(
-                  'emergencia',
-                ) ||
-                body.contains(
-                  'emergencia',
-                );
+            type == 'emergencia' ||
+            type == 'emergency_alert' ||
+            type == 'panic' ||
+            type == 'panic_alert' ||
+            payload == 'emergency' ||
+            payload == 'emergencia' ||
+            payload.startsWith('emergency/') ||
+            payload.startsWith('emergencia/') ||
+            title.contains('emergencia') ||
+            body.contains('emergencia');
 
         if (!isEmergency) {
           continue;
@@ -2997,42 +2135,23 @@ class NotificationsService {
         batch.set(
           document.reference,
           {
-            'read':
-                true,
-            'deleted':
-                true,
-            'completed':
-                true,
-            'active':
-                false,
-            'resolved':
-                true,
-            'deletedAt':
-                FieldValue.serverTimestamp(),
-            'resolvedAt':
-                FieldValue.serverTimestamp(),
-            'updatedAt':
-                FieldValue.serverTimestamp(),
+            'read': true,
+            'deleted': true,
+            'completed': true,
+            'active': false,
+            'resolved': true,
+            'deletedAt': FieldValue.serverTimestamp(),
+            'resolvedAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
           },
-          SetOptions(
-            merge:
-                true,
-          ),
+          SetOptions(merge: true),
         );
 
-        final emergencyKey =
-            data['emergencyKey']
-                ?.toString()
-                .trim();
+        final emergencyKey = data['emergencyKey']?.toString().trim();
 
-        if (emergencyKey != null &&
-            emergencyKey.isNotEmpty) {
-          _processedEmergencyKeys.add(
-            emergencyKey,
-          );
-
-          _processedEmergencyTimes[emergencyKey] =
-              DateTime.now();
+        if (emergencyKey != null && emergencyKey.isNotEmpty) {
+          _processedEmergencyKeys.add(emergencyKey);
+          _processedEmergencyTimes[emergencyKey] = DateTime.now();
         }
 
         modifiedCount++;
@@ -3042,75 +2161,42 @@ class NotificationsService {
         await batch.commit();
       }
 
-      debugPrint(
-        'Emergencias internas eliminadas: $modifiedCount',
-      );
-    } catch (
-      error,
-      stackTrace
-    ) {
-      debugPrint(
-        'Error eliminando alertas de emergencia: $error',
-      );
-
-      debugPrint(
-        stackTrace.toString(),
-      );
-
+      debugPrint('Emergencias internas eliminadas: $modifiedCount');
+    } catch (error, stackTrace) {
+      debugPrint('Error eliminando alertas de emergencia: $error');
+      debugPrint(stackTrace.toString());
       rethrow;
     }
   }
-    // ============================================================
+
+  // ============================================================
   // GENERAR ID ESTABLE
   // ============================================================
 
-  static int _baseIdStable(
-    String value,
-  ) {
-    final uid =
-        FirebaseAuth.instance.currentUser?.uid ??
-            'guest';
+  static int _baseIdStable(String value) {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    final combined = '$uid-$value';
+    final hash = _fnv1a32(combined);
 
-    final combined =
-        '$uid-$value';
-
-    final hash =
-        _fnv1a32(
-      combined,
-    );
-
-    return (hash % 900000) +
-        100000;
+    return (hash % 900000) + 100000;
   }
 
   // ============================================================
   // HASH FNV-1A
   // ============================================================
 
-  static int _fnv1a32(
-    String input,
-  ) {
-    const int fnvPrime =
-        16777619;
+  static int _fnv1a32(String input) {
+    const int fnvPrime = 16777619;
+    const int offsetBasis = 2166136261;
 
-    const int offsetBasis =
-        2166136261;
+    int hash = offsetBasis;
 
-    int hash =
-        offsetBasis;
-
-    for (final unit
-        in input.codeUnits) {
-      hash ^=
-          unit;
-
-      hash =
-          (hash * fnvPrime) &
-              0xFFFFFFFF;
+    for (final unit in input.codeUnits) {
+      hash ^= unit;
+      hash = (hash * fnvPrime) & 0xFFFFFFFF;
     }
 
-    return hash &
-        0x7FFFFFFF;
+    return hash & 0x7FFFFFFF;
   }
 
   // ============================================================
@@ -3123,84 +2209,27 @@ class NotificationsService {
   ) {
     switch (cadence) {
       case MemoryCadence.hourly1:
-        return date.add(
-          const Duration(
-            hours:
-                1,
-          ),
-        );
-
+        return date.add(const Duration(hours: 1));
       case MemoryCadence.hourly2:
-        return date.add(
-          const Duration(
-            hours:
-                2,
-          ),
-        );
-
+        return date.add(const Duration(hours: 2));
       case MemoryCadence.hourly6:
-        return date.add(
-          const Duration(
-            hours:
-                6,
-          ),
-        );
-
+        return date.add(const Duration(hours: 6));
       case MemoryCadence.daily1:
-        return date.add(
-          const Duration(
-            days:
-                1,
-          ),
-        );
-
+        return date.add(const Duration(days: 1));
       case MemoryCadence.daily2:
-        return date.add(
-          const Duration(
-            days:
-                2,
-          ),
-        );
-
+        return date.add(const Duration(days: 2));
       case MemoryCadence.weekly:
-        return date.add(
-          const Duration(
-            days:
-                7,
-          ),
-        );
-
+        return date.add(const Duration(days: 7));
       case MemoryCadence.biweekly:
-        return date.add(
-          const Duration(
-            days:
-                14,
-          ),
-        );
-
+        return date.add(const Duration(days: 14));
       case MemoryCadence.monthly:
-        return _addMonths(
-          date,
-          1,
-        );
-
+        return _addMonths(date, 1);
       case MemoryCadence.quarterly:
-        return _addMonths(
-          date,
-          3,
-        );
-
+        return _addMonths(date, 3);
       case MemoryCadence.semiannual:
-        return _addMonths(
-          date,
-          6,
-        );
-
+        return _addMonths(date, 6);
       case MemoryCadence.annual:
-        return _addMonths(
-          date,
-          12,
-        );
+        return _addMonths(date, 12);
     }
   }
 
@@ -3212,25 +2241,13 @@ class NotificationsService {
     DateTime date,
     int monthsToAdd,
   ) {
-    final newMonth =
-        date.month +
-            monthsToAdd;
+    final newMonth = date.month + monthsToAdd;
+    final year = date.year + ((newMonth - 1) ~/ 12);
+    final month = ((newMonth - 1) % 12) + 1;
 
-    final year =
-        date.year +
-            ((newMonth - 1) ~/ 12);
-
-    final month =
-        ((newMonth - 1) % 12) +
-            1;
-
-    final day =
-        min(
+    final day = min(
       date.day,
-      _daysInMonth(
-        year,
-        month,
-      ),
+      _daysInMonth(year, month),
     );
 
     return DateTime(
@@ -3253,29 +2270,125 @@ class NotificationsService {
     int year,
     int month,
   ) {
-    final nextMonth =
-        month == 12
-            ? DateTime(
-                year + 1,
-                1,
-                1,
-              )
-            : DateTime(
-                year,
-                month + 1,
-                1,
-              );
+    final nextMonth = month == 12
+        ? DateTime(year + 1, 1, 1)
+        : DateTime(year, month + 1, 1);
 
-    return nextMonth
-        .difference(
-          DateTime(
-            year,
-            month,
-            1,
-          ),
-        )
-        .inDays;
+    return nextMonth.difference(DateTime(year, month, 1)).inDays;
   }
+
+  static Stream<int> watchUnreadNotificationsCountForCurrentUser() async* {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+
+  if (uid == null) {
+    yield 0;
+    return;
+  }
+
+  yield await getUnreadNotificationsCountForUser(uid);
+
+  yield* Stream.periodic(
+    const Duration(seconds: 2),
+  ).asyncMap((_) {
+    return getUnreadNotificationsCountForUser(uid);
+  });
+}
+
+static Future<int> getUnreadNotificationsCountForUser(String uid) async {
+  await ensureInitialized();
+
+  final pendingList = await pendingNotificationRequests();
+
+  final unreadLocalReminders = pendingList.where((notification) {
+    final payload = notification.payload?.trim() ?? '';
+
+    // Solo se cuentan los recordatorios generales. Los recuerdos se cuentan
+    // desde Firestore mediante reminder.read para evitar duplicados.
+    return payload.startsWith('reminder/');
+  }).length;
+
+  final appSnapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('notifications')
+      .get();
+
+  final unreadAppCount = appSnapshot.docs.where((document) {
+    final data = document.data();
+
+    final read = data['read'] == true;
+    final deleted = data['deleted'] == true;
+    final completed = data['completed'] == true;
+    final resolved = data['resolved'] == true;
+
+    final activeValue = data['active'];
+    final inactive = activeValue != null && activeValue == false;
+
+    final type = data['type']?.toString().trim().toLowerCase() ?? 'general';
+
+    final duplicateType = type == 'reminder' ||
+        type == 'memory' ||
+        type == 'emergency' ||
+        type == 'emergencia' ||
+        type == 'emergency_alert' ||
+        type == 'panic' ||
+        type == 'panic_alert';
+
+    return !read &&
+        !deleted &&
+        !completed &&
+        !resolved &&
+        !inactive &&
+        !duplicateType;
+  }).length;
+
+  final emergencySnapshot = await FirebaseFirestore.instance
+      .collection('emergencies')
+      .where('caregiverId', isEqualTo: uid)
+      .get();
+
+  final unreadEmergencyCount = emergencySnapshot.docs.where((document) {
+    final data = document.data();
+
+    final active = data['active'] == true;
+    final read = data['read'] == true;
+    final deleted = data['deleted'] == true;
+    final resolved = data['resolved'] == true;
+    final completed = data['completed'] == true;
+
+    return active && !read && !deleted && !resolved && !completed;
+  }).length;
+
+  final memoriesSnapshot = await FirebaseFirestore.instance
+      .collection('memories')
+      .doc(uid)
+      .collection('user_memories')
+      .get();
+
+  final unreadMemoryCount = memoriesSnapshot.docs.where((document) {
+    final data = document.data();
+    final reminderValue = data['reminder'];
+
+    if (reminderValue is! Map) {
+      return false;
+    }
+
+    final reminder = Map<String, dynamic>.from(reminderValue);
+
+    final enabled = reminder['enabled'] == true;
+    final read = reminder['read'] == true;
+    final deleted = reminder['deleted'] == true;
+    final completed = reminder['completed'] == true;
+    final nextAt = reminder['nextAt'];
+
+    return enabled && !read && !deleted && !completed && nextAt != null;
+  }).length;
+
+  return unreadLocalReminders +
+      unreadAppCount +
+      unreadEmergencyCount +
+      unreadMemoryCount;
+}
 
   // ============================================================
   // PRUEBA DE NOTIFICACIÓN
@@ -3285,12 +2398,9 @@ class NotificationsService {
     await ensureInitialized();
 
     await showInstant(
-      title:
-          'Prueba de WhoAmI',
-      body:
-          'El sistema de notificaciones está funcionando.',
-      payload:
-          'test',
+      title: 'Prueba de WhoAmI',
+      body: 'El sistema de notificaciones está funcionando.',
+      payload: 'test',
     );
   }
 }

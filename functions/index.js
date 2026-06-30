@@ -1,24 +1,24 @@
 const admin = require("firebase-admin");
+const { setGlobalOptions } = require("firebase-functions/v2");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { DateTime } = require("luxon");
 
 admin.initializeApp();
 const db = admin.firestore();
 
-/**
- * Cadencias permitidas:
- * hourly1 | hourly2 | hourly6 | daily1 | daily2 | weekly | biweekly
- * monthly | quarterly | semiannual | annual
- */
+setGlobalOptions({
+  region: "us-central1",
+});
+
 function computeNextAt({ cadence, timeHHmm, timezone, fromJSDate }) {
   const tz = timezone || "America/Mexico_City";
   const now = DateTime.now().setZone(tz);
-
   const from = DateTime.fromJSDate(fromJSDate).setZone(tz);
 
-  // Normaliza time "HH:mm"
   let hh = 9;
   let mm = 0;
+
   if (typeof timeHHmm === "string" && timeHHmm.includes(":")) {
     const parts = timeHHmm.split(":");
     const ph = parseInt(parts[0], 10);
@@ -43,14 +43,12 @@ function computeNextAt({ cadence, timeHHmm, timezone, fromJSDate }) {
 
   const inc = addMap[cadence] || { months: 1 };
 
-  // Si es por horas, solo suma horas desde "from"
   if (String(cadence).startsWith("hourly")) {
     let next = from.plus(inc);
     while (next <= now) next = next.plus(inc);
     return next.toJSDate();
   }
 
-  // Para diario/semanal/mensual/anual, fijamos hora HH:mm y avanzamos
   let next = from
     .plus(inc)
     .set({ hour: hh, minute: mm, second: 0, millisecond: 0 });
@@ -65,35 +63,84 @@ function computeNextAt({ cadence, timeHHmm, timezone, fromJSDate }) {
 }
 
 async function getAllUserTokens(userId) {
+  const tokens = [];
+
+  const userDoc = await db.collection("users").doc(userId).get();
+  const userData = userDoc.exists ? userDoc.data() || {} : {};
+
+  if (typeof userData.fcmToken === "string" && userData.fcmToken.length > 0) {
+    tokens.push(userData.fcmToken);
+  }
+
+  if (Array.isArray(userData.fcmTokens)) {
+    for (const token of userData.fcmTokens) {
+      if (typeof token === "string" && token.length > 0) {
+        tokens.push(token);
+      }
+    }
+  }
+
   const snap = await db
     .collection("users")
     .doc(userId)
     .collection("fcm_tokens")
     .get();
 
-  const tokens = [];
   snap.forEach((d) => {
     const data = d.data() || {};
     if (typeof data.token === "string" && data.token.length > 0) {
       tokens.push(data.token);
     }
   });
-  return tokens;
+
+  return [...new Set(tokens)].filter(Boolean);
 }
 
-/**
- * Busca recordatorios vencidos y manda push a todos los dispositivos del usuario.
- *
- * Estructura esperada:
- * memories/{uid}/user_memories/{docId}
- *   reminder: {
- *     enabled: true,
- *     cadence: "monthly",
- *     time: "09:00",
- *     timezone: "America/Mexico_City",
- *     nextAt: Timestamp
- *   }
- */
+exports.sendEmergencyNotification = onDocumentCreated(
+  "emergencies/{emergencyId}",
+  async (event) => {
+    const emergency = event.data.data();
+    const emergencyId = event.params.emergencyId;
+
+    if (!emergency) return null;
+
+    const caregiverId = emergency.caregiverId;
+    const consultantId = emergency.consultantId || "";
+    const consultantName = emergency.consultantName || "Tu consultante";
+
+    if (!caregiverId) return null;
+
+    const tokens = await getAllUserTokens(caregiverId);
+
+    if (tokens.length === 0) {
+      console.log(`Cuidador ${caregiverId} sin tokens FCM.`);
+      return null;
+    }
+
+    const response = await admin.messaging().sendEachForMulticast({
+      tokens,
+      data: {
+        type: "emergency",
+        emergencyId,
+        consultantId,
+        title: "Emergencia detectada",
+        body: `${consultantName} necesita ayuda.`,
+        lat: emergency.lat ? String(emergency.lat) : "",
+        lng: emergency.lng ? String(emergency.lng) : "",
+      },
+      android: {
+        priority: "high",
+      },
+    });
+
+    console.log(
+      `Emergencia ${emergencyId}: tokens=${tokens.length} ok=${response.successCount} fail=${response.failureCount}`
+    );
+
+    return null;
+  }
+);
+
 exports.sendDueReminders = onSchedule(
   { schedule: "every 5 minutes", timeZone: "America/Mexico_City" },
   async () => {
@@ -111,13 +158,10 @@ exports.sendDueReminders = onSchedule(
       return null;
     }
 
-    console.log(`Recordatorios vencidos encontrados: ${dueQuery.size}`);
-
     for (const doc of dueQuery.docs) {
       const data = doc.data() || {};
       const reminder = data.reminder || {};
 
-      // doc.ref path: memories/{uid}/user_memories/{docId}
       const pathParts = doc.ref.path.split("/");
       const userId = pathParts[1];
 
@@ -132,57 +176,28 @@ exports.sendDueReminders = onSchedule(
       const timeHHmm = String(reminder.time || "09:00");
       const timezone = String(reminder.timezone || "America/Mexico_City");
 
-      // Tokens del usuario (multi-dispositivo)
       const tokens = await getAllUserTokens(userId);
 
       if (tokens.length > 0) {
-        try {
-          const payload = {
-            notification: {
-              title: "WhoAmI?",
-              body: displayDate ? `${title} (${displayDate})` : title,
-            },
-            data: {
-              type: "memory_reminder",
-              memoryDocId: doc.id,
-              userId,
-            },
-          };
-
-          const resp = await admin.messaging().sendEachForMulticast({
-            tokens,
-            ...payload,
-          });
-
-          console.log(
-            `Usuario ${userId}: tokens=${tokens.length} ok=${resp.successCount} fail=${resp.failureCount}`
-          );
-
-          // Limpia tokens inválidos
-          if (resp.failureCount > 0) {
-            const batch = db.batch();
-            resp.responses.forEach((r, idx) => {
-              if (!r.success) {
-                const badToken = tokens[idx];
-                const tokenRef = db
-                  .collection("users")
-                  .doc(userId)
-                  .collection("fcm_tokens")
-                  .doc(badToken);
-                batch.delete(tokenRef);
-              }
-            });
-            await batch.commit().catch(() => {});
-          }
-        } catch (err) {
-          console.log("Error enviando FCM:", err);
-        }
-      } else {
-        console.log(`Usuario ${userId} sin tokens. Solo actualizo nextAt.`);
+        await admin.messaging().sendEachForMulticast({
+          tokens,
+          notification: {
+            title: "WhoAmI?",
+            body: displayDate ? `${title} (${displayDate})` : title,
+          },
+          data: {
+            type: "memory_reminder",
+            memoryDocId: doc.id,
+            userId,
+          },
+          android: {
+            priority: "high",
+          },
+        });
       }
 
-      // Calcula el siguiente nextAt basado en el nextAt actual
       let fromDate = new Date();
+
       try {
         if (reminder.nextAt && reminder.nextAt.toDate) {
           fromDate = reminder.nextAt.toDate();

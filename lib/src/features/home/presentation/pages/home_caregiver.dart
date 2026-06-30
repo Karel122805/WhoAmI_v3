@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:vibration/vibration.dart';
 
 import 'package:whoami_app/src/core/theme/app_theme.dart';
+import 'package:whoami_app/src/core/tutorial/tutorial_manager.dart';
 
 import 'package:whoami_app/src/features/assistant/presentation/pages/assistant_page.dart';
 import 'package:whoami_app/src/features/emergency/presentation/pages/emergency_map_page.dart';
@@ -41,20 +42,18 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
       _emergencySubscription;
 
-  /*
-   * Guarda todos los identificadores ya procesados.
-   *
-   * Antes solamente se guardaba _lastAlertId. Si Firestore
-   * devolvía varias emergencias, los identificadores se
-   * alternaban y las alertas volvían a aparecer.
-   */
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _patientRequestResponseSubscription;
+
   final Set<String> _processedEmergencyIds =
       <String>{};
 
-  /*
-   * Evita abrir varios diálogos al mismo tiempo.
-   */
+  final Set<String> _processedPatientRequestResponseIds =
+      <String>{};
+
   bool _emergencyDialogVisible = false;
+
+  bool _patientRequestDialogVisible = false;
 
   @override
   void initState() {
@@ -72,14 +71,19 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
           return;
         }
 
+        await TutorialManager.maybeShowCaregiverHome(
+          context,
+        );
+
+        if (!mounted) {
+          return;
+        }
+
+        _listenForPatientRequestResponses();
         _listenForEmergencyAlerts();
       },
     );
   }
-
-  // ============================================================
-  // INICIALIZAR HOME DEL CUIDADOR
-  // ============================================================
 
   Future<void> _initializeHome() async {
     try {
@@ -103,10 +107,6 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
       );
     }
   }
-
-  // ============================================================
-  // CONTAR NOTIFICACIONES GENERALES NO LEÍDAS
-  // ============================================================
 
   int _countUnreadAppNotifications(
     QuerySnapshot<Map<String, dynamic>> snapshot,
@@ -159,47 +159,358 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
     ).length;
   }
 
-  // ============================================================
-  // CONTAR EMERGENCIAS PENDIENTES
-  // ============================================================
+ int _countUnreadEmergencies(
+  QuerySnapshot<Map<String, dynamic>> snapshot,
+) {
+  return snapshot.docs.where(
+    (document) {
+      final data = document.data();
 
-  int _countUnreadEmergencies(
-    QuerySnapshot<Map<String, dynamic>> snapshot,
-  ) {
-    return snapshot.docs.where(
-      (document) {
-        final data =
-            document.data();
+      final deleted = data['deleted'] == true;
 
-        final active =
-            data['active'] == true;
-
-        final read =
-            data['read'] == true;
-
-        final deleted =
-            data['deleted'] == true;
-
-        final resolved =
-            data['resolved'] == true;
-
-        return active &&
-            !read &&
-            !deleted &&
-            !resolved;
-      },
-    ).length;
-  }
-
-  // ============================================================
-  // ABRIR PANTALLA DE NOTIFICACIONES
-  // ============================================================
+      return !deleted;
+    },
+  ).length;
+}
 
   Future<void> _openNotifications() async {
     await Navigator.pushNamed(
       context,
       NotificationsPage.route,
     );
+  }
+
+  void _listenForPatientRequestResponses() {
+    final uid =
+        FirebaseAuth.instance.currentUser?.uid;
+
+    if (uid == null) {
+      return;
+    }
+
+    _patientRequestResponseSubscription?.cancel();
+
+    _patientRequestResponseSubscription =
+        FirebaseFirestore.instance
+            .collection('notifications')
+            .where(
+              'userId',
+              isEqualTo: uid,
+            )
+            .where(
+              'read',
+              isEqualTo: false,
+            )
+            .snapshots()
+            .listen(
+      (
+        QuerySnapshot<Map<String, dynamic>> snapshot,
+      ) async {
+        if (!mounted ||
+            snapshot.docs.isEmpty ||
+            _patientRequestDialogVisible) {
+          return;
+        }
+
+        for (final document in snapshot.docs) {
+          if (_processedPatientRequestResponseIds.contains(
+            document.id,
+          )) {
+            continue;
+          }
+
+          final data =
+              document.data();
+
+          final type =
+              data['type']
+                      ?.toString()
+                      .trim() ??
+                  '';
+
+          final accepted =
+              type ==
+                  'patient_request_accepted';
+
+          final rejected =
+              type ==
+                  'patient_request_rejected';
+
+          if (!accepted &&
+              !rejected) {
+            continue;
+          }
+
+          _processedPatientRequestResponseIds.add(
+            document.id,
+          );
+
+          _patientRequestDialogVisible =
+              true;
+
+          try {
+            final patientId =
+                data['patientId']
+                        ?.toString()
+                        .trim() ??
+                    '';
+
+            String patientName =
+                data['patientName']
+                        ?.toString()
+                        .trim() ??
+                    '';
+
+            if (patientName.isEmpty &&
+                patientId.isNotEmpty) {
+              try {
+                final patientDocument =
+                    await FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(patientId)
+                        .get();
+
+                final patientData =
+                    patientDocument.data();
+
+                if (patientData != null) {
+                  final firstName =
+                      patientData['firstName']
+                              ?.toString()
+                              .trim() ??
+                          '';
+
+                  final lastName =
+                      patientData['lastName']
+                              ?.toString()
+                              .trim() ??
+                          '';
+
+                  final displayName =
+                      patientData['displayName']
+                              ?.toString()
+                              .trim() ??
+                          '';
+
+                  final fullName = [
+                    firstName,
+                    lastName,
+                  ]
+                      .where(
+                        (
+                          value,
+                        ) {
+                          return value.isNotEmpty;
+                        },
+                      )
+                      .join(
+                        ' ',
+                      );
+
+                  patientName =
+                      fullName.isNotEmpty
+                          ? fullName
+                          : displayName;
+                }
+              } catch (
+                error,
+                stackTrace
+              ) {
+                debugPrint(
+                  'No se pudo obtener el nombre del consultante: $error',
+                );
+
+                debugPrint(
+                  stackTrace.toString(),
+                );
+              }
+            }
+
+            if (patientName.isEmpty) {
+              patientName =
+                  'El consultante';
+            }
+
+            if (!mounted) {
+              return;
+            }
+
+            await _showPatientRequestResponseDialog(
+              notificationId:
+                  document.id,
+              title:
+                  accepted
+                      ? 'Solicitud aceptada'
+                      : 'Solicitud rechazada',
+              message:
+                  accepted
+                      ? '$patientName aceptó tu solicitud de vinculación.\n\n'
+                          'Ahora puedes consultar la información que el consultante haya compartido contigo.'
+                      : '$patientName rechazó tu solicitud de vinculación.\n\n'
+                          'Si lo deseas, puedes enviar una nueva solicitud más adelante.',
+            );
+          } catch (
+            error,
+            stackTrace
+          ) {
+            debugPrint(
+              'Error mostrando la respuesta de la solicitud: $error',
+            );
+
+            debugPrint(
+              stackTrace.toString(),
+            );
+          } finally {
+            _patientRequestDialogVisible =
+                false;
+          }
+
+          break;
+        }
+      },
+      onError: (
+        Object error,
+        StackTrace stackTrace,
+      ) {
+        debugPrint(
+          'Error escuchando respuestas de solicitudes: $error',
+        );
+
+        debugPrint(
+          stackTrace.toString(),
+        );
+      },
+    );
+  }
+
+  Future<void> _showPatientRequestResponseDialog({
+    required String notificationId,
+    required String title,
+    required String message,
+  }) async {
+    if (!mounted) {
+      return;
+    }
+
+    final colors =
+        context.appColors;
+
+    await showDialog<void>(
+      context:
+          context,
+      barrierDismissible:
+          false,
+      builder:
+          (
+        dialogContext,
+      ) {
+        return AlertDialog(
+          backgroundColor:
+              colors.cardBackground,
+          shape:
+              RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(
+              20,
+            ),
+          ),
+          title:
+              Text(
+            title,
+            style:
+                TextStyle(
+              color:
+                  colors.textPrimary,
+              fontWeight:
+                  FontWeight.w800,
+            ),
+          ),
+          content:
+              Text(
+            message,
+            style:
+                TextStyle(
+              color:
+                  colors.textPrimary,
+              fontSize:
+                  15,
+              height:
+                  1.35,
+            ),
+          ),
+          actions: [
+            Center(
+              child:
+                  FilledButton(
+                style:
+                    FilledButton.styleFrom(
+                  backgroundColor:
+                      colors.secondaryButton,
+                  foregroundColor:
+                      colors.secondaryButtonText,
+                  padding:
+                      const EdgeInsets.symmetric(
+                                            horizontal:
+                        30,
+                    vertical:
+                        12,
+                  ),
+                  shape:
+                      RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(
+                      30,
+                    ),
+                  ),
+                ),
+                onPressed:
+                    () {
+                  Navigator.of(
+                    dialogContext,
+                  ).pop();
+                },
+                child:
+                    const Text(
+                  'Aceptar',
+                  style:
+                      TextStyle(
+                    fontWeight:
+                        FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('notifications')
+          .doc(notificationId)
+          .set(
+        {
+          'read': true,
+          'updatedAt':
+              FieldValue.serverTimestamp(),
+        },
+        SetOptions(
+          merge: true,
+        ),
+      );
+    } catch (
+      error,
+      stackTrace
+    ) {
+      debugPrint(
+        'Error marcando respuesta de solicitud como leída: $error',
+      );
+
+      debugPrint(
+        stackTrace.toString(),
+      );
+    }
   }
 
   // ============================================================
@@ -400,233 +711,233 @@ class _HomeCaregiverPageState extends State<HomeCaregiverPage> {
     }
   }
 
-// ============================================================
-// ESCUCHAR EMERGENCIAS DEL CUIDADOR
-// ============================================================
+  // ============================================================
+  // ESCUCHAR EMERGENCIAS DEL CUIDADOR
+  // ============================================================
 
-void _listenForEmergencyAlerts() {
-  final uid =
-      FirebaseAuth.instance.currentUser?.uid;
+  void _listenForEmergencyAlerts() {
+    final uid =
+        FirebaseAuth.instance.currentUser?.uid;
 
-  if (uid == null) {
-    return;
-  }
+    if (uid == null) {
+      return;
+    }
 
-  _emergencySubscription?.cancel();
+    _emergencySubscription?.cancel();
 
-  final Query<Map<String, dynamic>> emergenciesQuery =
-      FirebaseFirestore.instance
-          .collection('emergencies')
-          .where(
-            'caregiverId',
-            isEqualTo: uid,
-          )
-          .where(
-            'active',
-            isEqualTo: true,
-          )
-          .orderBy(
-            'timestamp',
-            descending: true,
-          );
+    final Query<Map<String, dynamic>> emergenciesQuery =
+        FirebaseFirestore.instance
+            .collection('emergencies')
+            .where(
+              'caregiverId',
+              isEqualTo: uid,
+            )
+            .where(
+              'active',
+              isEqualTo: true,
+            )
+            .orderBy(
+              'timestamp',
+              descending: true,
+            );
 
-  _emergencySubscription =
-      emergenciesQuery.snapshots().listen(
-    (
-      QuerySnapshot<Map<String, dynamic>> snapshot,
-    ) async {
-      if (snapshot.docs.isEmpty) {
-        return;
-      }
-
-      final changes =
-          snapshot.docChanges.where(
-        (
-          DocumentChange<Map<String, dynamic>> change,
-        ) {
-          return change.type ==
-                  DocumentChangeType.added ||
-              change.type ==
-                  DocumentChangeType.modified;
-        },
-      );
-
-      for (final change in changes) {
-  final DocumentSnapshot<Map<String, dynamic>> document =
-      change.doc;
-
-  final Map<String, dynamic>? rawData =
-      document.data();
-
-  if (rawData == null) {
-    continue;
-  }
-
-  final Map<String, dynamic> data =
-      rawData;
-
-  final String alertId =
-      document.id;
-
-        final bool active =
-            data['active'] == true;
-
-        final bool read =
-            data['read'] == true;
-
-        final bool deleted =
-            data['deleted'] == true;
-
-        final bool resolved =
-            data['resolved'] == true;
-
-        if (!active ||
-            read ||
-            deleted ||
-            resolved) {
-          continue;
-        }
-
-        if (_processedEmergencyIds.contains(
-          alertId,
-        )) {
-          continue;
-        }
-
-        /*
-         * Se agrega antes de mostrar la alerta para evitar
-         * que el mismo documento vuelva a procesarse.
-         */
-        _processedEmergencyIds.add(
-          alertId,
-        );
-
-        final String consultantId =
-            data['consultantId']
-                    ?.toString()
-                    .trim() ??
-                '';
-
-        final String rawConsultantName =
-            data['consultantName']
-                    ?.toString()
-                    .trim() ??
-                '';
-
-        final String consultantName =
-            rawConsultantName.isNotEmpty
-                ? rawConsultantName
-                : 'Consultante';
-
-        final dynamic lat =
-            data['lat'] ??
-                data['latitude'];
-
-        final dynamic lng =
-            data['lng'] ??
-                data['longitude'];
-
-        final String rawTitle =
-            data['title']
-                    ?.toString()
-                    .trim() ??
-                '';
-
-        final String title =
-            rawTitle.isNotEmpty
-                ? rawTitle
-                : 'Emergencia detectada';
-
-        final String rawBody =
-            data['body']
-                    ?.toString()
-                    .trim() ??
-                '';
-
-        final String body =
-            rawBody.isNotEmpty
-                ? rawBody
-                : '$consultantName necesita ayuda.';
-
-        debugPrint(
-          'Emergencia nueva recibida: $alertId',
-        );
-
-        if (!kIsWeb) {
-          /*
-           * La emergencia ya está guardada en Firestore.
-           * No se vuelve a guardar para evitar el ciclo de
-           * notificaciones.
-           */
-          unawaited(
-            NotificationsService.showEmergencyAlert(
-              title: title,
-              body: body,
-              emergencyKey: alertId,
-              saveInFirestore: false,
-            ),
-          );
-
-          unawaited(
-            Vibration.vibrate(
-              duration: 1500,
-              amplitude: 255,
-            ),
-          );
-        }
-
-        if (!mounted) {
+    _emergencySubscription =
+        emergenciesQuery.snapshots().listen(
+      (
+        QuerySnapshot<Map<String, dynamic>> snapshot,
+      ) async {
+        if (snapshot.docs.isEmpty) {
           return;
         }
 
-        /*
-         * Evita colocar varios diálogos uno encima de otro.
-         */
-        if (_emergencyDialogVisible) {
-          continue;
-        }
+        final changes =
+            snapshot.docChanges.where(
+          (
+            DocumentChange<Map<String, dynamic>> change,
+          ) {
+            return change.type ==
+                    DocumentChangeType.added ||
+                change.type ==
+                    DocumentChangeType.modified;
+          },
+        );
 
-        _emergencyDialogVisible =
-            true;
+        for (final change in changes) {
+          final DocumentSnapshot<Map<String, dynamic>> document =
+              change.doc;
 
-        try {
-          await _showEmergencyDialog(
-            alertId: alertId,
-            consultantId: consultantId,
-            consultantName: consultantName,
-            body: body,
-            lat: lat,
-            lng: lng,
+          final Map<String, dynamic>? rawData =
+              document.data();
+
+          if (rawData == null) {
+            continue;
+          }
+
+          final Map<String, dynamic> data =
+              rawData;
+
+          final String alertId =
+              document.id;
+
+          final bool active =
+              data['active'] == true;
+
+          final bool read =
+              data['read'] == true;
+
+          final bool deleted =
+              data['deleted'] == true;
+
+          final bool resolved =
+              data['resolved'] == true;
+
+          if (!active ||
+              read ||
+              deleted ||
+              resolved) {
+            continue;
+          }
+
+          if (_processedEmergencyIds.contains(
+            alertId,
+          )) {
+            continue;
+          }
+
+          /*
+           * Se agrega antes de mostrar la alerta para evitar
+           * que el mismo documento vuelva a procesarse.
+           */
+          _processedEmergencyIds.add(
+            alertId,
           );
-        } catch (error, stackTrace) {
+
+          final String consultantId =
+              data['consultantId']
+                      ?.toString()
+                      .trim() ??
+                  '';
+
+          final String rawConsultantName =
+              data['consultantName']
+                      ?.toString()
+                      .trim() ??
+                  '';
+
+          final String consultantName =
+              rawConsultantName.isNotEmpty
+                  ? rawConsultantName
+                  : 'Consultante';
+
+          final dynamic lat =
+              data['lat'] ??
+                  data['latitude'];
+
+          final dynamic lng =
+              data['lng'] ??
+                  data['longitude'];
+
+          final String rawTitle =
+              data['title']
+                      ?.toString()
+                      .trim() ??
+                  '';
+
+          final String title =
+              rawTitle.isNotEmpty
+                  ? rawTitle
+                  : 'Emergencia detectada';
+
+          final String rawBody =
+              data['body']
+                      ?.toString()
+                      .trim() ??
+                  '';
+
+          final String body =
+              rawBody.isNotEmpty
+                  ? rawBody
+                  : '$consultantName necesita ayuda.';
+
           debugPrint(
-            'Error mostrando la emergencia: $error',
+            'Emergencia nueva recibida: $alertId',
           );
 
-          debugPrint(
-            stackTrace.toString(),
-          );
-        } finally {
-          _emergencyDialogVisible =
-              false;
+          if (!kIsWeb) {
+            /*
+             * La emergencia ya está guardada en Firestore.
+             * No se vuelve a guardar para evitar el ciclo de
+             * notificaciones.
+             */
+            unawaited(
+              NotificationsService.showEmergencyAlert(
+                title: title,
+                body: body,
+                emergencyKey: alertId,
+                saveInFirestore: false,
+              ),
+            );
+
+            unawaited(
+              Vibration.vibrate(
+                duration: 1500,
+                amplitude: 255,
+              ),
+            );
+          }
+
+          if (!mounted) {
+            return;
+          }
+
+          /*
+           * Evita colocar varios diálogos uno encima de otro.
+           */
+          if (_emergencyDialogVisible) {
+            continue;
+          }
+                    _emergencyDialogVisible =
+              true;
+
+          try {
+            await _showEmergencyDialog(
+              alertId: alertId,
+              consultantId: consultantId,
+              consultantName: consultantName,
+              body: body,
+              lat: lat,
+              lng: lng,
+            );
+          } catch (error, stackTrace) {
+            debugPrint(
+              'Error mostrando la emergencia: $error',
+            );
+
+            debugPrint(
+              stackTrace.toString(),
+            );
+          } finally {
+            _emergencyDialogVisible =
+                false;
+          }
         }
-      }
-    },
-    onError: (
-      Object error,
-      StackTrace stackTrace,
-    ) {
-      debugPrint(
-        'Error escuchando emergencias: $error',
-      );
+      },
+      onError: (
+        Object error,
+        StackTrace stackTrace,
+      ) {
+        debugPrint(
+          'Error escuchando emergencias: $error',
+        );
 
-      debugPrint(
-        stackTrace.toString(),
-      );
-    },
-  );
-}
-    // ============================================================
+        debugPrint(
+          stackTrace.toString(),
+        );
+      },
+    );
+  }
+
+  // ============================================================
   // MOSTRAR DIÁLOGO DE EMERGENCIA
   // ============================================================
 
@@ -1077,8 +1388,7 @@ void _listenForEmergencyAlerts() {
                                       },
                           ),
                         ),
-
-                        const SizedBox(
+                                                const SizedBox(
                           height:
                               12,
                         ),
@@ -1538,8 +1848,7 @@ void _listenForEmergencyAlerts() {
                           );
                         },
                       ),
-
-                      _PillButton(
+                                            _PillButton(
                         color:
                             context.isDark
                                 ? colors.secondaryButton
@@ -1687,117 +1996,47 @@ void _listenForEmergencyAlerts() {
           ),
 
           SafeArea(
-            child:
-                Align(
-              alignment:
-                  Alignment.topRight,
-              child:
-                  Padding(
-                padding:
-                    const EdgeInsets.only(
-                  right:
-                      8,
-                  top:
-                      4,
-                ),
-                child:
-                    uid == null
-                        ? _NotificationBell(
-                            count:
-                                0,
-                            loading:
-                                false,
-                            onTap:
-                                _openNotifications,
-                          )
-                        : StreamBuilder<
-                            QuerySnapshot<Map<String, dynamic>>>(
-                            stream:
-                                FirebaseFirestore.instance
-                                    .collection(
-                                      'users',
-                                    )
-                                    .doc(
-                                      uid,
-                                    )
-                                    .collection(
-                                      'notifications',
-                                    )
-                                    .snapshots(),
-                            builder:
-                                (
-                              context,
-                              notificationSnapshot,
-                            ) {
-                              final notificationLoading =
-                                  notificationSnapshot.connectionState ==
-                                          ConnectionState.waiting &&
-                                      !notificationSnapshot.hasData;
-
-                              final notificationCount =
-                                  notificationSnapshot.hasData
-                                      ? _countUnreadAppNotifications(
-                                          notificationSnapshot.data!,
-                                        )
-                                      : 0;
-
-                              return StreamBuilder<
-                                  QuerySnapshot<Map<String, dynamic>>>(
-                                stream:
-                                    FirebaseFirestore.instance
-                                        .collection(
-                                          'emergencies',
-                                        )
-                                        .where(
-                                          'caregiverId',
-                                          isEqualTo:
-                                              uid,
-                                        )
-                                        .snapshots(),
-                                builder:
-                                    (
-                                  context,
-                                  emergencySnapshot,
-                                ) {
-                                  final emergencyLoading =
-                                      emergencySnapshot.connectionState ==
-                                              ConnectionState.waiting &&
-                                          !emergencySnapshot.hasData;
-
-                                  final emergencyCount =
-                                      emergencySnapshot.hasData
-                                          ? _countUnreadEmergencies(
-                                              emergencySnapshot.data!,
-                                            )
-                                          : 0;
-
-                                  final totalCount =
-                                      notificationCount +
-                                          emergencyCount;
-
-                                  return _NotificationBell(
-                                    count:
-                                        totalCount,
-                                    loading:
-                                        notificationLoading ||
-                                            emergencyLoading,
-                                    onTap:
-                                        _openNotifications,
-                                  );
-                                },
-                              );
-                            },
-                          ),
+          child: Align(
+            alignment: Alignment.topRight,
+            child: Padding(
+              padding: const EdgeInsets.only(
+                right: 8,
+                top: 4,
               ),
+              child: uid == null
+                  ? _NotificationBell(
+                      count: 0,
+                      loading: false,
+                      onTap: _openNotifications,
+                    )
+                  : StreamBuilder<int>(
+                      stream: NotificationsService.watchUnreadNotificationsCountForCurrentUser(),
+                      builder: (context, snapshot) {
+                        final loading =
+                            snapshot.connectionState == ConnectionState.waiting &&
+                                !snapshot.hasData;
+
+                        final count = snapshot.data ?? 0;
+
+                        return _NotificationBell(
+                          count: count,
+                          loading: loading,
+                          onTap: _openNotifications,
+                        );
+                      },
+                    ),
             ),
           ),
+        ),
         ],
       ),
     );
   }
-    @override
+
+  @override
   void dispose() {
     _emergencySubscription?.cancel();
+    _patientRequestResponseSubscription?.cancel();
 
     super.dispose();
   }
